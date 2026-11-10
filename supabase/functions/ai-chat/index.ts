@@ -26,6 +26,8 @@ const FREE_CHAT_MODELS = new Set<string>([]);
 // App id "groq-gpt-oss-120b" maps to Groq model "openai/gpt-oss-120b",
 // falling back to "openai/gpt-oss-20b" when the first fails.
 const GROQ_CHAT_MODELS = new Set(["groq-gpt-oss-120b"]);
+// Free GET chat providers (no key needed) — plain GET endpoints.
+const GET_CHAT_MODELS = new Set(["gpt-3-5", "pollinations-text"]);
 const GROQ_MODEL_CHAIN = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const FREE_IMAGE_MODELS = new Set(["fusion-uni"]);
@@ -255,7 +257,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const isGroqChat = GROQ_CHAT_MODELS.has(modelName);
-  const isFreeChat = FREE_CHAT_MODELS.has(modelName) || isGroqChat;
+  const isGetChat = GET_CHAT_MODELS.has(modelName);
+  const isFreeChat = FREE_CHAT_MODELS.has(modelName) || isGroqChat || isGetChat;
   const isFreeImage = FREE_IMAGE_MODELS.has(modelName);
   const isProChat = PRO_CHAT_MODELS.has(modelName);
   const isProImage = PRO_IMAGE_MODELS.has(modelName);
@@ -346,6 +349,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
     return jsonResponse({ ok: false, error: lastError }, 502);
+  }
+
+  // --- Free GET chat providers (gpt-3-5 JSON reply, Pollinations raw text). ---
+  if (isGetChat) {
+    const url = modelName === "gpt-3-5"
+      ? "https://gpt-3-5.apis-bj-devs.workers.dev/?prompt=" +
+        encodeURIComponent(upstreamPrompt)
+      : "https://text.pollinations.ai/" + encodeURIComponent(upstreamPrompt);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      const raw = await res.text();
+      let text = "";
+      if (modelName === "gpt-3-5") {
+        try {
+          const data = JSON.parse(raw) as Record<string, unknown>;
+          text = typeof data.reply === "string" ? data.reply.trim() : "";
+        } catch {
+          text = "";
+        }
+      } else {
+        text = raw.trim();
+      }
+      if (res.ok && text) {
+        console.log(`ai-chat: user=${user.id} model=${modelName} ok=get`);
+        return jsonResponse({ ok: true, kind: "text", text });
+      }
+      return jsonResponse({ ok: false, error: "AI service unavailable" }, 502);
+    } catch (err) {
+      console.log(`ai-chat: user=${user.id} model=${modelName} get failed`);
+      return jsonResponse({ ok: false, error: "AI service unavailable" }, 502);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   // --- FT Fusion (all other models). ---

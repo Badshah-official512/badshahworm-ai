@@ -40,7 +40,7 @@ Most AI apps are expensive, English-only, or need a credit card. BADSHAH AI was 
 
 | Mode | Models |
 | --- | --- |
-| Chat | groq-gpt-oss-120b (Groq GPT-OSS 120B) |
+| Chat | groq-gpt-oss-120b (Groq GPT-OSS 120B), gpt-3-5, pollinations-text |
 | Image | fusion-uni |
 
 **Pro:**

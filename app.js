@@ -54,6 +54,8 @@ const THINKING_PHRASES = ['Thinking', 'Thinking', 'Thinking', 'Thinking', 'Think
 const MODELS = {
   chat: {
     'groq-gpt-oss-120b':  { label: 'GPT-OSS 120B', icon: 'fa-brain', pro: false },
+    'gpt-3-5': { label: 'GPT 3.5', icon: 'fa-comment', pro: false },
+    'pollinations-text': { label: 'Pollinations', icon: 'fa-feather', pro: false },
     'fusion-synth':  { label: 'Synth',  icon: 'fa-wand-magic-sparkles', pro: true },
     'fusion-vortex': { label: 'Vortex', icon: 'fa-meteor', pro: true },
     'fusion-abyss':  { label: 'Abyss',  icon: 'fa-moon', pro: true },
@@ -71,6 +73,8 @@ const MODELS = {
 
 const MODEL_COSTS = {
   'groq-gpt-oss-120b':  { inputPerWord: 2, outputPerWord: 4 },
+  'gpt-3-5': { inputPerWord: 2, outputPerWord: 4 },
+  'pollinations-text': { inputPerWord: 2, outputPerWord: 4 },
   'fusion-synth':  { inputPerWord: 3, outputPerWord: 6 },
   'fusion-vortex': { inputPerWord: 3, outputPerWord: 6 },
   'fusion-abyss':  { inputPerWord: 3, outputPerWord: 6 },
