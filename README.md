@@ -40,14 +40,14 @@ Most AI apps are expensive, English-only, or need a credit card. BADSHAH AI was 
 
 | Mode | Models |
 | --- | --- |
-| Chat | fusion-spark |
+| Chat | groq-gpt-oss-120b (Groq GPT-OSS 120B) |
 | Image | fusion-uni |
 
 **Pro:**
 
 | Mode | Models |
 | --- | --- |
-| Chat | fusion-synth, fusion-vortex, fusion-abyss, fusion-shadow, fusion-reaper, fusion-dread, fusion-void (+ fusion-spark) |
+| Chat | fusion-synth, fusion-vortex, fusion-abyss, fusion-shadow, fusion-reaper, fusion-dread, fusion-void |
 | Image | fusion-astra |
 
 Free plan has a safety filter on. Pro has no extra filter. Pro access is checked on the server — never in the browser.

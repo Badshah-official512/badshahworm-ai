@@ -129,7 +129,7 @@ Payment (manual — pehle pay, phir order form):
 
 ## 8) Models (11 total — fusion-pulse hataya gaya)
 
-- **Free** (koi bhi registered user): chat `fusion-spark`;
+- **Free** (koi bhi registered user): chat `groq-gpt-oss-120b` (Groq GPT-OSS 120B, free);
   image `fusion-uni`.
 - **Pro only**: chat `fusion-synth`, `fusion-vortex`, `fusion-abyss`,
   `fusion-shadow`, `fusion-reaper`, `fusion-dread`, `fusion-void`;

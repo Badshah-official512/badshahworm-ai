@@ -53,7 +53,7 @@ const THINKING_PHRASES = ['Thinking', 'Thinking', 'Thinking', 'Thinking', 'Think
 
 const MODELS = {
   chat: {
-    'fusion-spark':  { label: 'Spark',  icon: 'fa-bolt', pro: false },
+    'groq-gpt-oss-120b':  { label: 'GPT-OSS 120B', icon: 'fa-brain', pro: false },
     'fusion-synth':  { label: 'Synth',  icon: 'fa-wand-magic-sparkles', pro: true },
     'fusion-vortex': { label: 'Vortex', icon: 'fa-meteor', pro: true },
     'fusion-abyss':  { label: 'Abyss',  icon: 'fa-moon', pro: true },
@@ -70,7 +70,7 @@ const MODELS = {
 
 
 const MODEL_COSTS = {
-  'fusion-spark':  { inputPerWord: 2, outputPerWord: 4 },
+  'groq-gpt-oss-120b':  { inputPerWord: 2, outputPerWord: 4 },
   'fusion-synth':  { inputPerWord: 3, outputPerWord: 6 },
   'fusion-vortex': { inputPerWord: 3, outputPerWord: 6 },
   'fusion-abyss':  { inputPerWord: 3, outputPerWord: 6 },
@@ -290,7 +290,7 @@ const state = {
   chats: [],
   activeChatId: null,
   mode: 'chat',
-  settings: { theme: 'noir', fontSize: 1, models: { chat: 'fusion-spark', image: 'fusion-uni' }, memories: [], memoryEnabled: true },
+  settings: { theme: 'noir', fontSize: 1, models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true },
   usage: { tokensUsedLifetime: 0, alertsShown: {} },
   editingMessageId: null,
   abortController: null,
@@ -376,7 +376,7 @@ function renderMarkdown(text) {
 async function loadSettings() {
   const saved = await idbGet('meta', 'settings');
   if (saved && saved.value) {
-    let migratedModels = { chat: 'fusion-spark', image: 'fusion-uni' };
+    let migratedModels = { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' };
     if (typeof saved.value.model === 'string') {
       migratedModels.chat = saved.value.model;
     } else if (saved.value.models) {
@@ -386,13 +386,13 @@ async function loadSettings() {
 
 
 
-    if (!MODELS.chat[migratedModels.chat]) migratedModels.chat = 'fusion-spark';
+    if (!MODELS.chat[migratedModels.chat]) migratedModels.chat = 'groq-gpt-oss-120b';
     if (!MODELS.image[migratedModels.image]) migratedModels.image = 'fusion-uni';
     state.settings = { theme: 'noir', fontSize: 1, memories: [], memoryEnabled: true, ...saved.value, models: migratedModels };
     state.settings.theme = 'noir';
     delete state.settings.model;
   } else {
-    state.settings = { theme: 'noir', fontSize: 1, models: { chat: 'fusion-spark', image: 'fusion-uni' }, memories: [], memoryEnabled: true };
+    state.settings = { theme: 'noir', fontSize: 1, models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true };
   }
   applyTheme();
   applyFontSize();
@@ -1498,7 +1498,7 @@ async function handleSend() {
     const displayText = typedText || `Analyze this file: ${attachment.name}`;
     const promptForApi = `${typedText ? typedText + '\n\n' : ''}File "${attachment.name}" content:\n${attachment.text}`.slice(0, MAX_ATTACHMENT_CHARS);
     const inWords = countWords(promptForApi);
-    if (!checkAndConsumeTokens('input', inWords, state.settings.models.chat || 'fusion-spark')) return;
+    if (!checkAndConsumeTokens('input', inWords, state.settings.models.chat || 'groq-gpt-oss-120b')) return;
 
     autoTitleChat(chat, displayText);
     chat.mode = 'chat';
@@ -1517,7 +1517,7 @@ async function handleSend() {
 
   const text = typedText;
   const inWords = countWords(text);
-  if (!checkAndConsumeTokens('input', inWords, state.settings.models.chat || 'fusion-spark')) return;
+  if (!checkAndConsumeTokens('input', inWords, state.settings.models.chat || 'groq-gpt-oss-120b')) return;
 
   autoTitleChat(chat, text);
   chat.mode = state.mode;
@@ -1603,7 +1603,7 @@ function blobToDataUrl(blob) {
 }
 
 async function runChatGeneration(chat, text) {
-  const model = state.settings.models.chat || 'fusion-spark';
+  const model = state.settings.models.chat || 'groq-gpt-oss-120b';
   if (!aiPrecheck(model)) { setGenerating(false); return; }
   setGenerating(true); showSkeleton();
   state.abortController = new AbortController();
@@ -1757,7 +1757,7 @@ async function regenerateMessage(chat, m) {
 
 async function continueMessage(chat, m) {
   if (state.generating) return;
-  const model = state.settings.models.chat || 'fusion-spark';
+  const model = state.settings.models.chat || 'groq-gpt-oss-120b';
   if (!aiPrecheck(model)) return;
   setGenerating(true); showSkeleton();
   state.abortController = new AbortController();

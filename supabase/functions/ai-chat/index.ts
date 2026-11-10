@@ -20,7 +20,14 @@ const FREE_SAFETY_PREFIX =
   "You are a helpful, safe AI assistant. Refuse requests that are illegal, harmful, or disallowed (including weapons, cyberattacks, malware, DDoS, hacking, fraud, or harassment), and explain briefly why. User request: ";
 
 // Model allow-lists. Enforced server-side; never trust the frontend.
-const FREE_CHAT_MODELS = new Set(["fusion-spark"]);
+// Free FT chat models — none right now (no FT key allows fusion-spark).
+const FREE_CHAT_MODELS = new Set<string>([]);
+// Groq free chat — served by Groq's OpenAI-compatible API, not FT Fusion.
+// App id "groq-gpt-oss-120b" maps to Groq model "openai/gpt-oss-120b",
+// falling back to "openai/gpt-oss-20b" when the first fails.
+const GROQ_CHAT_MODELS = new Set(["groq-gpt-oss-120b"]);
+const GROQ_MODEL_CHAIN = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const FREE_IMAGE_MODELS = new Set(["fusion-uni"]);
 const PRO_CHAT_MODELS = new Set([
   "fusion-synth",
@@ -146,12 +153,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ ok: false, error: "Method not allowed" }, 405);
   }
 
-  const apiKey = Deno.env.get("FT_FUSION_API_KEY");
-  if (!apiKey) {
-    console.error("ai-chat: FT_FUSION_API_KEY is not set");
-    return jsonResponse({ ok: false, error: "Server misconfigured" }, 500);
-  }
-
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -253,7 +254,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  const isFreeChat = FREE_CHAT_MODELS.has(modelName);
+  const isGroqChat = GROQ_CHAT_MODELS.has(modelName);
+  const isFreeChat = FREE_CHAT_MODELS.has(modelName) || isGroqChat;
   const isFreeImage = FREE_IMAGE_MODELS.has(modelName);
   const isProChat = PRO_CHAT_MODELS.has(modelName);
   const isProImage = PRO_IMAGE_MODELS.has(modelName);
@@ -280,6 +282,78 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const upstreamPrompt = isPro || !safetyFilterOn
     ? q
     : FREE_SAFETY_PREFIX + q;
+
+  // --- Groq free chat (OpenAI-compatible API, gpt-oss-120b then 20b). ---
+  if (isGroqChat) {
+    const groqKey = Deno.env.get("GROQ_API_KEY");
+    if (!groqKey) {
+      console.error("ai-chat: GROQ_API_KEY is not set");
+      return jsonResponse({ ok: false, error: "Server misconfigured" }, 500);
+    }
+    let lastError = "AI service unavailable";
+    for (const groqModel of GROQ_MODEL_CHAIN) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60_000);
+      try {
+        const res = await fetch(GROQ_API_URL, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${groqKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: groqModel,
+            messages: [{ role: "user", content: upstreamPrompt }],
+            temperature: 0.7,
+            max_tokens: 2048,
+          }),
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => null) as Record<
+          string,
+          unknown
+        > | null;
+        const choice = data && Array.isArray(data.choices) ? data.choices[0] : null;
+        const msg = choice && typeof choice === "object"
+          ? (choice as Record<string, unknown>).message
+          : null;
+        const text = msg && typeof msg === "object" &&
+            typeof (msg as Record<string, unknown>).content === "string"
+          ? ((msg as Record<string, unknown>).content as string).trim()
+          : "";
+        if (res.ok && text) {
+          console.log(
+            `ai-chat: user=${user.id} model=${modelName} ok=groq:${groqModel}`,
+          );
+          return jsonResponse({ ok: true, kind: "text", text });
+        }
+        const errObj = data && typeof data.error === "object" && data.error !== null
+          ? data.error as Record<string, unknown>
+          : null;
+        lastError = errObj && typeof errObj.message === "string"
+          ? errObj.message as string
+          : `Groq ${groqModel} failed`;
+        console.log(
+          `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} failed, trying next`,
+        );
+      } catch (err) {
+        lastError = err instanceof Error ? err.name : "AI service unavailable";
+        console.log(
+          `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} fetch failed`,
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    return jsonResponse({ ok: false, error: lastError }, 502);
+  }
+
+  // --- FT Fusion (all other models). ---
+  const apiKey = Deno.env.get("FT_FUSION_API_KEY");
+  if (!apiKey) {
+    console.error("ai-chat: FT_FUSION_API_KEY is not set");
+    return jsonResponse({ ok: false, error: "Server misconfigured" }, 500);
+  }
 
   const upstreamUrl = new URL(UPSTREAM_BASE);
   upstreamUrl.search = new URLSearchParams({

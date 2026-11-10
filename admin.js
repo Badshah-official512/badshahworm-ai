@@ -107,7 +107,7 @@ function formatRs(amount) {
 
 // All 12 models the app offers (chat + image), used for the settings toggles.
 const MODELS = [
-  { id: 'fusion-spark', kind: 'chat' },
+  { id: 'groq-gpt-oss-120b', kind: 'chat' },
   { id: 'fusion-synth', kind: 'chat' },
   { id: 'fusion-vortex', kind: 'chat' },
   { id: 'fusion-abyss', kind: 'chat' },
