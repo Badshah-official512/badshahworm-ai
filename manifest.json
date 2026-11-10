@@ -1,0 +1,29 @@
+{
+  "name": "BADSHAH AI - Badshah222 AI",
+  "short_name": "BADSHAH AI",
+  "description": "Badshah222 AI (BADSHAH AI) is a free AI assistant with unlimited chats and unlimited AI image generation. Chat, write, translate to Urdu, get coding help and create images online - no login needed.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "lang": "en",
+  "scope": "/",
+  "categories": [
+    "productivity",
+    "utilities"
+  ]
+}
