@@ -40,7 +40,7 @@ Most AI apps are expensive, English-only, or need a credit card. BADSHAH AI was 
 
 | Mode | Models |
 | --- | --- |
-| Chat | fusion-lexus, fusion-spark |
+| Chat | fusion-spark |
 | Image | fusion-uni |
 
 **Pro:**

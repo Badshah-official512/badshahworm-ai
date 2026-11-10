@@ -20,7 +20,7 @@ const FREE_SAFETY_PREFIX =
   "You are a helpful, safe AI assistant. Refuse requests that are illegal, harmful, or disallowed (including weapons, cyberattacks, malware, DDoS, hacking, fraud, or harassment), and explain briefly why. User request: ";
 
 // Model allow-lists. Enforced server-side; never trust the frontend.
-const FREE_CHAT_MODELS = new Set(["fusion-lexus", "fusion-spark"]);
+const FREE_CHAT_MODELS = new Set(["fusion-spark"]);
 const FREE_IMAGE_MODELS = new Set(["fusion-uni"]);
 const PRO_CHAT_MODELS = new Set([
   "fusion-synth",

@@ -53,7 +53,6 @@ const THINKING_PHRASES = ['Thinking', 'Thinking', 'Thinking', 'Thinking', 'Think
 
 const MODELS = {
   chat: {
-    'fusion-lexus':  { label: 'Lexus',  icon: 'fa-gem', pro: false },
     'fusion-spark':  { label: 'Spark',  icon: 'fa-bolt', pro: false },
     'fusion-synth':  { label: 'Synth',  icon: 'fa-wand-magic-sparkles', pro: true },
     'fusion-vortex': { label: 'Vortex', icon: 'fa-meteor', pro: true },
@@ -71,7 +70,6 @@ const MODELS = {
 
 
 const MODEL_COSTS = {
-  'fusion-lexus':  { inputPerWord: 2, outputPerWord: 4 },
   'fusion-spark':  { inputPerWord: 2, outputPerWord: 4 },
   'fusion-synth':  { inputPerWord: 3, outputPerWord: 6 },
   'fusion-vortex': { inputPerWord: 3, outputPerWord: 6 },
