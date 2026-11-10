@@ -766,3 +766,5 @@ body{display:flex;flex-direction:column}
 #buyProModal .modal-box{border-top:3px solid var(--accent)}
 .help-thread{transition:border-color .2s ease}
 .help-thread:hover{border-color:var(--border-strong)}
+
+#ttsVoiceSelect { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: inherit; font: inherit; }

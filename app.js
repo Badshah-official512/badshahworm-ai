@@ -294,7 +294,7 @@ const state = {
   chats: [],
   activeChatId: null,
   mode: 'chat',
-  settings: { theme: 'noir', fontSize: 1, models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true },
+  settings: { theme: 'noir', fontSize: 1, ttsVoice: 'auto', models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true },
   usage: { tokensUsedLifetime: 0, alertsShown: {} },
   editingMessageId: null,
   abortController: null,
@@ -392,11 +392,12 @@ async function loadSettings() {
 
     if (!MODELS.chat[migratedModels.chat]) migratedModels.chat = 'groq-gpt-oss-120b';
     if (!MODELS.image[migratedModels.image]) migratedModels.image = 'fusion-uni';
-    state.settings = { theme: 'noir', fontSize: 1, memories: [], memoryEnabled: true, ...saved.value, models: migratedModels };
+    state.settings = { theme: 'noir', fontSize: 1, ttsVoice: 'auto', memories: [], memoryEnabled: true, ...saved.value, models: migratedModels };
     state.settings.theme = 'noir';
     delete state.settings.model;
+    if (!state.settings.ttsVoice) state.settings.ttsVoice = 'auto';
   } else {
-    state.settings = { theme: 'noir', fontSize: 1, models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true };
+    state.settings = { theme: 'noir', fontSize: 1, ttsVoice: 'auto', models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true };
   }
   applyTheme();
   applyFontSize();
@@ -454,6 +455,8 @@ function syncSettingsUI() {
   $all('#themeGrid button').forEach(b => b.classList.toggle('active', b.dataset.theme === state.settings.theme));
   const fontRange = $('#fontSizeRange');
   if (fontRange) fontRange.value = state.settings.fontSize;
+  const ttsSel = $('#ttsVoiceSelect');
+  if (ttsSel) ttsSel.value = state.settings.ttsVoice || 'auto';
   const memoryToggle = $('#memoryEnabledToggle');
   if (memoryToggle) memoryToggle.checked = state.settings.memoryEnabled !== false;
   const memoryBlock = $('#memoryManagerBlock');
@@ -472,6 +475,11 @@ $('#memoryEnabledToggle')?.addEventListener('change', (e) => {
 $('#fontSizeRange')?.addEventListener('input', (e) => {
   state.settings.fontSize = parseInt(e.target.value, 10);
   applyFontSize(); saveSettings();
+});
+
+$('#ttsVoiceSelect')?.addEventListener('change', (e) => {
+  state.settings.ttsVoice = e.target.value;
+  saveSettings();
 });
 
 function renderMemories() {
@@ -871,18 +879,22 @@ function bindMessageActions(div, m) {
   div.querySelector('.speak-btn')?.addEventListener('click', (ev) => speakText(ev.currentTarget, m.content || ''));
 }
 
-// ---- Read aloud (device default TTS voice) ----
-// Uses the device's default text-to-speech voice. Muse's own voice cannot be
-// embedded in a web app, so no specific voice is ever picked here.
+// ---- Read aloud (server TTS voice, device voice as fallback) ----
+// The speaker button calls the ai-chat function (mode "tts"), which turns the
+// text into MP3 parts via the TTS worker (StreamElements voices, Google Urdu
+// for Urdu script) and plays them in order. If the server voice fails, the
+// device's own text-to-speech is used instead.
 let speakingBtn = null;
+let ttsAudio = null;
+let ttsUrls = [];
 function resetSpeakBtn() {
   if (speakingBtn) { speakingBtn.classList.remove('speaking'); speakingBtn.textContent = '🔊'; speakingBtn = null; }
+  if (ttsAudio) { try { ttsAudio.pause(); } catch (_) {} ttsAudio = null; }
+  ttsUrls.forEach(u => URL.revokeObjectURL(u)); ttsUrls = [];
 }
 function speakText(btn, text) {
   try {
-    if (!('speechSynthesis' in window)) { toast('Read aloud is not supported on this device.', 'error'); return; }
-    if (speakingBtn === btn && window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); resetSpeakBtn(); return; }
-    window.speechSynthesis.cancel();
+    if (speakingBtn === btn) { resetSpeakBtn(); return; }
     resetSpeakBtn();
     const plain = String(text || '')
       .replace(/```[\s\S]*?```/g, ' ')
@@ -891,14 +903,39 @@ function speakText(btn, text) {
       .replace(/\s+/g, ' ')
       .trim();
     if (!plain) return;
-    const utter = new SpeechSynthesisUtterance(plain);
-    utter.rate = 1;
     speakingBtn = btn;
     btn.classList.add('speaking');
     btn.textContent = '⏹';
-    utter.onend = () => resetSpeakBtn();
-    utter.onerror = () => resetSpeakBtn();
-    window.speechSynthesis.speak(utter);
+    const voice = (state.settings && state.settings.ttsVoice) || 'auto';
+    const fallbackToDevice = () => {
+      if (!('speechSynthesis' in window)) { toast('Read aloud is not available.', 'error'); resetSpeakBtn(); return; }
+      const utter = new SpeechSynthesisUtterance(plain);
+      utter.rate = 1;
+      utter.onend = () => resetSpeakBtn();
+      utter.onerror = () => resetSpeakBtn();
+      window.speechSynthesis.speak(utter);
+    };
+    supabaseClient.functions.invoke('ai-chat', { body: { mode: 'tts', text: plain, voice } })
+      .then(({ data, error }) => {
+        if (error || !data || !data.ok || !Array.isArray(data.parts) || !data.parts.length) throw new Error('tts failed');
+        const urls = data.parts.map(p => {
+          const bin = atob(p);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          const u = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
+          ttsUrls.push(u); return u;
+        });
+        let i = 0;
+        const playNext = () => {
+          if (speakingBtn !== btn || i >= urls.length) { resetSpeakBtn(); return; }
+          ttsAudio = new Audio(urls[i++]);
+          ttsAudio.onended = playNext;
+          ttsAudio.onerror = playNext;
+          ttsAudio.play().catch(() => resetSpeakBtn());
+        };
+        playNext();
+      })
+      .catch(() => fallbackToDevice());
   } catch (e) { resetSpeakBtn(); }
 }
 

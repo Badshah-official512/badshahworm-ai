@@ -10,6 +10,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Upstream AI API base. No key is ever hard-coded here.
 const UPSTREAM_BASE = "https://ft-fusion.shehryarteam8876.workers.dev/ft/api";
+// Text-to-speech worker (Google TTS + StreamElements voices). No key needed.
+const TTS_BASE = "https://texttospeech.alphaapi.workers.dev";
 
 // Safety instruction prepended to the prompt for FREE users only,
 // and only while the admin's safety filter is ON (admin_settings key
@@ -145,6 +147,43 @@ function extractImageUrl(raw: string): string | null {
   return match ? match[0] : null;
 }
 
+// Split text into short chunks the TTS worker accepts (it fails over ~200 chars).
+function chunkText(text: string, maxLen = 170): string[] {
+  const sentences = text.split(/(?<=[.!?\u061f\n])\s+/).map((x) => x.trim())
+    .filter(Boolean);
+  const chunks: string[] = [];
+  let cur = "";
+  const push = (x: string) => {
+    if (x) chunks.push(x);
+  };
+  for (const sent of sentences) {
+    if (sent.length > maxLen) {
+      for (const w of sent.split(/\s+/)) {
+        if ((cur + " " + w).trim().length > maxLen) {
+          push(cur.trim());
+          cur = w;
+        } else cur = cur ? cur + " " + w : w;
+      }
+      continue;
+    }
+    if ((cur + " " + sent).trim().length > maxLen) {
+      push(cur.trim());
+      cur = sent;
+    } else cur = cur ? cur + " " + sent : sent;
+  }
+  push(cur.trim());
+  return chunks.filter(Boolean);
+}
+
+function b64encode(bytes: Uint8Array): string {
+  let binary = "";
+  const slice = 0x8000;
+  for (let i = 0; i < bytes.length; i += slice) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + slice));
+  }
+  return btoa(binary);
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // CORS preflight.
   if (req.method === "OPTIONS") {
@@ -228,6 +267,80 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return jsonResponse({ ok: false, error: "Invalid request body" }, 400);
+  }
+
+  // --- Text-to-speech (read aloud). Free for every registered user. ---
+  if ((body as Record<string, unknown>).mode === "tts") {
+    const b = body as Record<string, unknown>;
+    const rawText = typeof b.text === "string" ? b.text : "";
+    const text = rawText.replace(/\s+/g, " ").trim().slice(0, 2000);
+    if (!text) {
+      return jsonResponse({ ok: false, error: "No text" }, 400);
+    }
+    const hasUrduScript = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/
+      .test(text);
+    const voiceRaw = typeof b.voice === "string"
+      ? b.voice.toLowerCase()
+      : "auto";
+    const SE_VOICES: Record<string, string> = {
+      brian: "Brian", ivy: "Ivy", joey: "Joey", justin: "Justin",
+      kendra: "Kendra", kimberly: "Kimberly", salli: "Salli",
+      matthew: "Matthew", geraint: "Geraint", amy: "Amy", emma: "Emma",
+      aditi: "Aditi", raveena: "Raveena", hans: "Hans", nicole: "Nicole",
+      russell: "Russell", celine: "Celine", mathieu: "Mathieu",
+      dora: "Dora", karl: "Karl", mizuki: "Mizuki", takumi: "Takumi",
+      vicki: "Vicki",
+    };
+    let voiceLabel: string;
+    let ttsUrl: (chunk: string) => string;
+    if (voiceRaw === "ur" || (voiceRaw === "auto" && hasUrduScript)) {
+      voiceLabel = "ur";
+      ttsUrl = (c) =>
+        `${TTS_BASE}/?text=${encodeURIComponent(c)}&type=google&lang=ur`;
+    } else if (voiceRaw === "en") {
+      voiceLabel = "en";
+      ttsUrl = (c) =>
+        `${TTS_BASE}/?text=${encodeURIComponent(c)}&type=google&lang=en`;
+    } else {
+      const se = SE_VOICES[voiceRaw] ?? "Brian";
+      voiceLabel = se;
+      ttsUrl = (c) =>
+        `${TTS_BASE}/?text=${encodeURIComponent(c)}&type=streamelements&voice=${se}`;
+    }
+    // StreamElements is flaky (often 500s), so every chunk falls back to
+    // Google TTS (lang=en for Latin text, lang=ur again for Urdu script).
+    const fallbackUrl = (c: string) =>
+      voiceLabel === "ur"
+        ? `${TTS_BASE}/?text=${encodeURIComponent(c)}&type=google&lang=ur`
+        : `${TTS_BASE}/?text=${encodeURIComponent(c)}&type=google&lang=en`;
+    const fetchPart = async (url: string): Promise<string | null> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30_000);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) return null;
+        const buf = new Uint8Array(await res.arrayBuffer());
+        if (buf.length < 500) return null;
+        return b64encode(buf);
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+    const chunks = chunkText(text);
+    const results = await Promise.all(chunks.map(async (chunk) => {
+      return (await fetchPart(ttsUrl(chunk))) ??
+        (await fetchPart(fallbackUrl(chunk)));
+    }));
+    const parts = results.filter((x): x is string => x !== null);
+    if (!parts.length) {
+      return jsonResponse({ ok: false, error: "Speech unavailable" }, 502);
+    }
+    console.log(
+      `ai-chat: user=${user.id} tts ok voice=${voiceLabel} chunks=${parts.length}/${chunks.length}`,
+    );
+    return jsonResponse({ ok: true, kind: "audio", voice: voiceLabel, parts });
   }
 
   const { model, q } = body as Record<string, unknown>;

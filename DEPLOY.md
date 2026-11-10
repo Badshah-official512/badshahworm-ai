@@ -131,6 +131,13 @@ Payment (manual — pehle pay, phir order form):
 
 - **Free** (koi bhi registered user): chat `groq-gpt-oss-120b` (Groq GPT-OSS 120B), `gpt-3-5`, `pollinations-text` (free);
   image `fusion-uni`.
+- **Read aloud (TTS):** every AI message has a 🔊 button. The Edge Function
+  (`mode: "tts"`) turns the reply into MP3 parts via
+  `texttospeech.alphaapi.workers.dev` — StreamElements voices (default Brian)
+  for Latin text, Google TTS `lang=ur` for Urdu script. Long replies are
+  chunked (~170 chars per part). Voice is picked in Settings → Read aloud
+  voice. The all-voices catalog (`all-voices.faizankhichi.me/voices`) is a
+  voice list only (no synthesis endpoint), so it is not wired to playback.
 - **Pro only**: chat `fusion-synth`, `fusion-vortex`, `fusion-abyss`,
   `fusion-shadow`, `fusion-reaper`, `fusion-dread`, `fusion-void`;
   image `fusion-astra`.
