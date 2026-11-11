@@ -22,8 +22,8 @@ const FREE_SAFETY_PREFIX =
   "You are a helpful, safe AI assistant. Refuse requests that are illegal, harmful, or disallowed (including weapons, cyberattacks, malware, DDoS, hacking, fraud, or harassment), and explain briefly why. User request: ";
 
 // Model allow-lists. Enforced server-side; never trust the frontend.
-// Free FT chat models — none right now (no FT key allows fusion-spark).
-const FREE_CHAT_MODELS = new Set<string>([]);
+// Free FT chat models (allowed by the current FT key).
+const FREE_CHAT_MODELS = new Set<string>(["fusion-spark", "fusion-lexus"]);
 // Groq free chat — served by Groq's OpenAI-compatible API, not FT Fusion.
 // Each app id maps to its own Groq model chain: the model itself first,
 // then the shared gpt-oss-20b fallback.
@@ -36,8 +36,8 @@ const GROQ_MODEL_CHAINS: Record<string, string[]> = {
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 // Free GET chat providers (no key needed) — plain GET endpoints.
 const GET_CHAT_MODELS = new Set(["gpt-3-5", "pollinations-text"]);
-// Free FT image models — none right now (no FT key allows fusion-uni).
-const FREE_IMAGE_MODELS = new Set<string>([]);
+// Free FT image models (allowed by the current FT key).
+const FREE_IMAGE_MODELS = new Set<string>(["fusion-uni"]);
 // Free image generators (no key needed). Pollinations first, stable-diffusion fallback.
 const IMAGE_GEN_MODELS = new Set(["pollinations-image", "stable-diffusion"]);
 const PRO_CHAT_MODELS = new Set([
@@ -140,6 +140,19 @@ function extractImageUrl(raw: string): string | null {
           const value = obj[field];
           if (typeof value === "string" && /^https?:\/\//i.test(value.trim())) {
             return value.trim();
+          }
+          // Some providers nest the URL, e.g. {"image": {"image_url": "https://..."}}.
+          if (value && typeof value === "object" && !Array.isArray(value)) {
+            const nested = value as Record<string, unknown>;
+            for (const nestedField of ["image_url", "url", "src"]) {
+              const nestedValue = nested[nestedField];
+              if (
+                typeof nestedValue === "string" &&
+                /^https?:\/\//i.test(nestedValue.trim())
+              ) {
+                return nestedValue.trim();
+              }
+            }
           }
         }
       }

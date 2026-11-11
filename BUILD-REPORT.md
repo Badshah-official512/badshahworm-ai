@@ -315,7 +315,8 @@ statically verified; **not live-tested** (no browser/Deno here).
 - `adminpanal.html`: title "Admin Panel — BADSHAH AI", `noindex, nofollow`.
   robots.txt disallows `/adminpanal` (and the old `/admin.html`); sitemap
   does not list it.
-- Admin login stays email+password. After an explicit login/register,
+- Admin login is password-only (no email field on the panel; it signs in
+  with the fixed admin email). After an explicit login/register,
   an admin is redirected to `adminpanal.html`; session restores never
   redirect, so "Back to app" works without a loop.
 
@@ -410,3 +411,15 @@ statically verified; **not live-tested** (no browser/Deno here).
   register → login as admin → redirect to /adminpanal → dashboard
   analytics → send a chat message with a failing provider (or a Pro model
   as a free user) and confirm the red error bubble shows the real reason.
+
+
+---
+
+## v2.3 — Password-only admin panel + free Fusion models (11 November 2026, PKT)
+
+- **Admin panel login is now password-only.** `adminpanal.html` has a single password field + Login button (no Gmail/email field). `admin.js` signs in with the fixed admin email behind the scenes and keeps the existing `is_admin` check and session-restore behavior. The admin Auth password was set to the value the user gave on 11 Nov 2026 (value never recorded).
+- **Free Fusion models added** (new FT key from the user's WarmGpt file allows all Fusion models, unlimited quota, expires 2029-08-05; set as the `FT_FUSION_API_KEY` secret). Free chat: `fusion-spark`, `fusion-lexus`. Free image: `fusion-uni` (same image-URL shape as astra). Pro now fully works on the new key: synth, vortex, astra, abyss, shadow, reaper, dread, void. `fusion-pulse` stays removed. Total models: 18 (14 chat + 4 image). Default free chat model unchanged (`groq-gpt-oss-120b`).
+- **Lifetime Pro user:** `zainartsstudio@gmail.com` granted Pro to 2099-12-31 (plan-custom), verified in the profile row and by a live Pro call as that user.
+- **Cleanup:** both diagnosis test users deleted; DB holds only the admin + the lifetime Pro user (+ real users).
+- **Secrets rotated:** `GROQ_API_KEY` (new key) and `FT_FUSION_API_KEY` (WarmGpt key) set via the "Muse deploy v3" PAT (expires 18 Nov 2026).
+- **IBAN corrected 2026-11-11 (user confirmed):** `PK57KHYB5085003008629737` is correct — the earlier `…39737` was wrong by one digit; fixed in code, policies, admin default, DB seed, and the live `admin_settings` row.

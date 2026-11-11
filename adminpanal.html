@@ -441,10 +441,19 @@
     <button id="adminLogoutBtn" type="button">Logout</button>
   </header>
 
-  <!-- Shown when the visitor is not logged in, or is not an admin. -->
+  <!-- Shown when the visitor is not logged in, or is not an admin.
+       Admin login is password-only — no email field on this page. -->
   <div id="adminGuard">
     <h2>Admin access required</h2>
-    <p id="adminGuardText">Please login from the main app as an admin.</p>
+    <p id="adminGuardText">Enter the admin password to open the panel.</p>
+    <form id="adminLoginForm" autocomplete="off" style="max-width:320px;margin:0 auto 16px;text-align:left;">
+      <div class="form-row">
+        <label for="adminPassword">Admin password</label>
+        <input id="adminPassword" type="password" placeholder="Enter admin password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn-gold" style="width:100%;">Login</button>
+    </form>
+    <p class="status" id="adminLoginStatus"></p>
     <a href="index.html">Go to the main app &rarr;</a>
   </div>
 
@@ -626,7 +635,7 @@
           </div>
           <div class="form-row">
             <label for="setIban">Bank IBAN</label>
-            <input id="setIban" type="text" value="PK57KHYB5085003008639737" autocomplete="off">
+            <input id="setIban" type="text" value="PK57KHYB5085003008629737" autocomplete="off">
           </div>
           <button id="savePaymentsBtn" type="button" class="btn-gold">Save payment accounts</button>
           <p class="status" id="paymentsStatus"></p>

@@ -652,7 +652,7 @@ VALUES
   ('maintenance', '{"on": false}'),
   ('models', '{"disabled": []}'),
   ('apk_url', '{"url": "Badshah222-ai.apk"}'),
-  ('payment_accounts', '{"easypaisa": "03095413705", "jazzcash": "03251787969", "nayapay": "03251787969", "bank_name": "Bank of Khyber (BOK)", "iban": "PK57KHYB5085003008639737"}'),
+  ('payment_accounts', '{"easypaisa": "03095413705", "jazzcash": "03251787969", "nayapay": "03251787969", "bank_name": "Bank of Khyber (BOK)", "iban": "PK57KHYB5085003008629737"}'),
   ('safety_filter', '{"enabled": true}'),
   ('site_name', '{"name": "BADSHAH AI"}'),
   ('support_contact', '{"value": "03251787969", "whatsapp": "03251787969"}')

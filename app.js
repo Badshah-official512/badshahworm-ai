@@ -58,6 +58,8 @@ const MODELS = {
     'groq-allam': { label: 'Allam 2 7B', icon: 'fa-language', pro: false },
     'gpt-3-5': { label: 'GPT 3.5', icon: 'fa-comment', pro: false },
     'pollinations-text': { label: 'Pollinations', icon: 'fa-feather', pro: false },
+    'fusion-spark': { label: 'Spark', icon: 'fa-bolt', pro: false },
+    'fusion-lexus': { label: 'Lexus', icon: 'fa-gem', pro: false },
     'fusion-synth':  { label: 'Synth',  icon: 'fa-wand-magic-sparkles', pro: true },
     'fusion-vortex': { label: 'Vortex', icon: 'fa-meteor', pro: true },
     'fusion-abyss':  { label: 'Abyss',  icon: 'fa-moon', pro: true },
@@ -69,6 +71,7 @@ const MODELS = {
   image: {
     'pollinations-image': { label: 'Pollinations', icon: 'fa-image', pro: false },
     'stable-diffusion': { label: 'Stable Diffusion', icon: 'fa-wand-magic-sparkles', pro: false },
+    'fusion-uni': { label: 'Uni', icon: 'fa-shapes', pro: false },
     'fusion-astra': { label: 'Astra', icon: 'fa-star', pro: true },
   },
 };
@@ -80,6 +83,8 @@ const MODEL_COSTS = {
   'groq-allam': { inputPerWord: 2, outputPerWord: 4 },
   'gpt-3-5': { inputPerWord: 2, outputPerWord: 4 },
   'pollinations-text': { inputPerWord: 2, outputPerWord: 4 },
+  'fusion-spark': { inputPerWord: 2, outputPerWord: 4 },
+  'fusion-lexus': { inputPerWord: 2, outputPerWord: 4 },
   'fusion-synth':  { inputPerWord: 3, outputPerWord: 6 },
   'fusion-vortex': { inputPerWord: 3, outputPerWord: 6 },
   'fusion-abyss':  { inputPerWord: 3, outputPerWord: 6 },
@@ -89,6 +94,7 @@ const MODEL_COSTS = {
   'fusion-void':   { inputPerWord: 3, outputPerWord: 6 },
   'pollinations-image': { flatCost: 22000 },
   'stable-diffusion': { flatCost: 22000 },
+  'fusion-uni':  { flatCost: 22000 },
   'fusion-astra':  { flatCost: 40000 },
 };
 
@@ -125,7 +131,7 @@ let PAYMENT_ACCOUNTS = {
   easypaisa: { label: 'Easypaisa', number: '03095413705' },
   jazzcash: { label: 'JazzCash', number: '03251787969' },
   nayapay: { label: 'NayaPay', number: '03251787969' },
-  bank: { label: 'Bank of Khyber (BOK)', iban: 'PK57KHYB5085003008639737' },
+  bank: { label: 'Bank of Khyber (BOK)', iban: 'PK57KHYB5085003008629737' },
 };
 // Fallback plans used only if the plans table cannot be read.
 const FALLBACK_PLANS = [

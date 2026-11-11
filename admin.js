@@ -105,13 +105,15 @@ function formatRs(amount) {
 // Constants / state
 // ---------------------------------------------------------------------------
 
-// All 15 models the app offers (chat + image), used for the settings toggles.
+// All 18 models the app offers (chat + image), used for the settings toggles.
 const MODELS = [
   { id: 'groq-gpt-oss-120b', kind: 'chat' },
   { id: 'groq-qwen', kind: 'chat' },
   { id: 'groq-allam', kind: 'chat' },
   { id: 'gpt-3-5', kind: 'chat' },
   { id: 'pollinations-text', kind: 'chat' },
+  { id: 'fusion-spark', kind: 'chat' },
+  { id: 'fusion-lexus', kind: 'chat' },
   { id: 'fusion-synth', kind: 'chat' },
   { id: 'fusion-vortex', kind: 'chat' },
   { id: 'fusion-abyss', kind: 'chat' },
@@ -121,6 +123,7 @@ const MODELS = [
   { id: 'fusion-void', kind: 'chat' },
   { id: 'pollinations-image', kind: 'image' },
   { id: 'stable-diffusion', kind: 'image' },
+  { id: 'fusion-uni', kind: 'image' },
   { id: 'fusion-astra', kind: 'image' }
 ];
 
@@ -135,6 +138,11 @@ const SETTING_KEYS = [
 ];
 
 let currentUserId = null;
+
+// Admin panel login is password-only: the form on adminpanal.html has no
+// email field — sign-in always uses this fixed admin email below, with
+// the password the admin types. No password is stored anywhere in code.
+const ADMIN_EMAIL = 'shahzain1751@gmail.com';
 let plansCache = []; // rows from plans
 let usersCache = []; // rows from profiles
 let ordersCache = []; // rows from payment_orders
@@ -167,6 +175,36 @@ function showPanels() {
   if (panels) panels.style.display = 'block';
 }
 
+// Password-only admin login: signs in with the fixed admin email and the
+// password typed on this page, then re-runs the guard check. A wrong
+// password, or a signed-in account that is not an admin, stays on the
+// guard — the panel only opens for an admin session.
+async function handleAdminLogin(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    setStatus('adminLoginStatus', 'Supabase is not configured yet.', false);
+    return;
+  }
+  const passwordInput = el('adminPassword');
+  const password = passwordInput ? passwordInput.value : '';
+  if (!password) {
+    setStatus('adminLoginStatus', 'Enter the admin password.', false);
+    return;
+  }
+  setStatus('adminLoginStatus', 'Logging in…');
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email: ADMIN_EMAIL,
+    password: password
+  });
+  if (passwordInput) passwordInput.value = '';
+  if (error) {
+    setStatus('adminLoginStatus', error.message || 'Login failed. Wrong password?', false);
+    return;
+  }
+  setStatus('adminLoginStatus', '');
+  await initAdmin();
+}
+
 async function loadPlans() {
   if (plansCache.length) return plansCache;
   const { data, error } = await supabaseClient
@@ -192,12 +230,12 @@ async function initAdmin() {
   const { data: sessionData, error: sessionError } =
     await supabaseClient.auth.getSession();
   if (sessionError) {
-    showGuard('Could not check your login. Please login from the main app as an admin.');
+    showGuard('Could not check your login. Please enter the admin password below.');
     return;
   }
   const user = sessionData && sessionData.session && sessionData.session.user;
   if (!user) {
-    showGuard('Please login from the main app as an admin.');
+    showGuard('Enter the admin password below to open the panel.');
     return;
   }
 
@@ -1336,11 +1374,19 @@ function wireEvents() {
 
   // Logout
   el('adminLogoutBtn').addEventListener('click', logout);
+
+  // Admin login form (password-only) on the guard.
+  const adminLoginForm = el('adminLoginForm');
+  if (adminLoginForm) {
+    adminLoginForm.addEventListener('submit', function (event) {
+      handleAdminLogin(event).catch(handleLoadError);
+    });
+  }
 }
 
 // Script is loaded at the end of <body>, so the DOM is ready.
 wireEvents();
 initAdmin().catch(function (err) {
   console.error(err);
-  showGuard('Something went wrong while checking your login. Please login from the main app as an admin.');
+  showGuard('Something went wrong while checking your login. Please try the admin password below.');
 });

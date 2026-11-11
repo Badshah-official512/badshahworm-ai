@@ -73,7 +73,8 @@ supabase secrets set OPENWEATHER_API_KEY=<tumhari-openweather-key-yahan>
   secret turant active hota hai.
 - Function kya karti hai: user ka JWT check → `profiles` se Pro status →
   model gating (Free: Groq GPT-OSS 120B / Qwen / Allam 2 7B, gpt-3-5,
-  pollinations-text; free image: pollinations-image / stable-diffusion;
+  pollinations-text, fusion-spark, fusion-lexus; free image: pollinations-image / stable-diffusion /
+  fusion-uni;
   Pro: fusion-synth, vortex, abyss, shadow, reaper, dread, void + image
   fusion-astra) → Free users ke prompt par safety instruction lagti hai
   **sirf jab admin ka safety filter ON ho** (`admin_settings` →
@@ -128,19 +129,17 @@ Payment (manual — pehle pay, phir order form):
 - Easypaisa: **03095413705**
 - JazzCash: **03251787969**
 - NayaPay: **03251787969**
-- Bank of Khyber (BOK), IBAN: **PK57KHYB5085003008639737**
+- Bank of Khyber (BOK), IBAN: **PK57KHYB5085003008629737**
 
-> ⚠️ IBAN check: user ne message mein "BK57KHYB5085003008639737" likha tha.
-> Pakistan ka country code **PK** hai, is liye `PK57…` istemal kiya gaya hai.
-> Deploy se pehle digits ek dafa user se double-check karwa lo — purane
-> record mein IBAN `PK57KHYB508500300862973` (…2973) tha, naye mein `…39737`
-> hai. Agar galat ho to `admin_settings` → `payment_accounts` se badal lo
-> (admin panel → Settings → Payment accounts).
+> ✅ IBAN confirmed by the user on 2026-11-11: `PK57KHYB5085003008629737` is correct.
+> (The earlier value `…39737` was wrong by one digit and has been corrected
+> everywhere — code, policies, admin default, DB seed, and the live
+> `admin_settings` → `payment_accounts` row.)
 
-## 8) Models (15 total — fusion-pulse hataya gaya)
+## 8) Models (18 total — fusion-pulse hataya gaya)
 
-- **Free** (koi bhi registered user): chat `groq-gpt-oss-120b` (Groq GPT-OSS 120B, fallback gpt-oss-20b), `groq-qwen` (Groq Qwen 3 27B), `groq-allam` (Groq Allam 2 7B), `gpt-3-5`, `pollinations-text` (free);
-  image `pollinations-image` (Pollinations) and `stable-diffusion`.
+- **Free** (koi bhi registered user): chat `groq-gpt-oss-120b` (Groq GPT-OSS 120B, fallback gpt-oss-20b), `groq-qwen` (Groq Qwen 3 27B), `groq-allam` (Groq Allam 2 7B), `gpt-3-5`, `pollinations-text`, `fusion-spark`, `fusion-lexus` (free);
+  image `pollinations-image` (Pollinations), `stable-diffusion` and `fusion-uni`.
 - **Read aloud (TTS):** every AI message has a 🔊 button. The Edge Function
   (`mode: "tts"`) turns the reply into MP3 parts via
   `texttospeech.alphaapi.workers.dev` — StreamElements voices (default Brian)
@@ -158,8 +157,8 @@ Payment (manual — pehle pay, phir order form):
   image `fusion-astra`.
 - `fusion-pulse` ab kahin nahi hai (frontend, Edge Function aur admin panel
   se remove; Edge Function use 400 se reject karta hai).
-- Free chat models ab 5 hain (3 Groq + 2 free providers); kul 15 models hain
-  (12 chat + 3 image).
+- Free chat models ab 7 hain (3 Groq + 2 free providers + 2 FT Fusion); kul 18 models hain
+  (14 chat + 4 image).
 
 ## 9) Policies, voice, aur baaki features
 

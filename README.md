@@ -29,7 +29,7 @@ Most AI apps are expensive, English-only, or need a credit card. BADSHAH AI was 
 
 - **Frontend:** a fast single-page app in plain HTML, CSS and JavaScript (no heavy framework) — sidebar chats, chat + image modes, prompt library, voice read-aloud, file upload.
 - **Backend:** [Supabase](https://supabase.com) — PostgreSQL database with Row Level Security, email + password login (no OTP), and an Edge Function (Deno) that talks to the AI API.
-- **AI models:** FT Fusion API + Groq + free providers — 15 models (see below). API keys live only as server secrets; they are never in the frontend code.
+- **AI models:** FT Fusion API + Groq + free providers — 18 models (see below). API keys live only as server secrets; they are never in the frontend code.
 - **Admin panel:** a professional dashboard (`adminpanal.html`, not linked from the main app) — users, Pro grants, payment orders, help-center replies, live analytics, plans, safety filter and site settings.
 - **Hosting:** Cloudflare Pages (deployment guide: [DEPLOY.md](DEPLOY.md)).
 
@@ -39,8 +39,8 @@ Most AI apps are expensive, English-only, or need a credit card. BADSHAH AI was 
 
 | Mode | Models |
 | --- | --- |
-| Chat | groq-gpt-oss-120b (Groq GPT-OSS 120B), groq-qwen (Groq Qwen 3 27B), groq-allam (Groq Allam 2 7B), gpt-3-5, pollinations-text |
-| Image | pollinations-image, stable-diffusion |
+| Chat | groq-gpt-oss-120b (Groq GPT-OSS 120B), groq-qwen (Groq Qwen 3 27B), groq-allam (Groq Allam 2 7B), gpt-3-5, pollinations-text, fusion-spark, fusion-lexus |
+| Image | pollinations-image, stable-diffusion, fusion-uni |
 
 **Pro:**
 
