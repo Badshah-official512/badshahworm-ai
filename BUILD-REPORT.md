@@ -281,3 +281,132 @@ project yet).
 - `config.js` still ships (harmless, `BADSHAH_API_URL = null`).
 - Old Cloudflare secret `BADSHAH_API_KEY` is no longer used — it can be
   removed from the Cloudflare project after the Supabase secret is set.
+
+---
+
+## v2.2 — 11 November 2026 (parent brief; live site badshah222-wormai.pages.dev)
+
+Parent diagnosis (verified live): the Edge Function answers correctly
+(free groq-gpt-oss-120b 200, pollinations-text 200, fusion-abyss as free user
+correctly 403). The backend was NOT down — the frontend swallowed errors.
+v2.2 hardens that path and does the full upgrade below. Code complete and
+statically verified; **not live-tested** (no browser/Deno here).
+
+### 1) Error handling — no more silent failures (app.js)
+- `callAiEdge` now extracts the server's `{ok:false, error}` text from
+  non-2xx Edge Function replies (supabase-js turns those into a generic
+  "non-2xx status code" error, which used to hide the real reason).
+- New `friendlyAiError()` maps errors to clear in-chat text: "needs Pro" vs
+  "Rate limited — wait a moment" vs "service down — try again in a moment"
+  vs "session expired — please login again".
+- `runChatGeneration` no longer replaces a failure with a generic "Sorry…"
+  line: failures are shown as a visible red error bubble
+  (`appendErrorMessage`, `type: 'error'`, `.is-error` CSS in styles.css)
+  with Copy + Regenerate actions; a Pro error also opens Buy Pro.
+  `runImageGeneration` and `continueMessage` show the same error bubbles.
+- `aiPrecheck` + `handleSend` now block chat when not logged in with a
+  clear "Please login first" message (before, the call went out and failed
+  401 with no visible reason).
+
+### 2) Admin panel moved to /adminpanal
+- `admin.html` → `adminpanal.html` (renamed; old `/admin.html` deleted, no
+  redirect page). No admin link/button anywhere on the main page
+  (`openAdminBtn` removed from index.html + app.js).
+- `adminpanal.html`: title "Admin Panel — BADSHAH AI", `noindex, nofollow`.
+  robots.txt disallows `/adminpanal` (and the old `/admin.html`); sitemap
+  does not list it.
+- Admin login stays email+password. After an explicit login/register,
+  an admin is redirected to `adminpanal.html`; session restores never
+  redirect, so "Back to app" works without a loop.
+
+### 3) SEO system (every page)
+- index.html title is exactly: "Badshah222 official worm ai | worm ai by
+  badshah 222 (badshah worm ai 222 / worm ai by badshah / badshahworm /
+  Mr Zain worm ai)". Description, keywords, OG/Twitter, canonical and
+  JSON-LD all point to `https://badshah222-wormai.pages.dev/` with the
+  worm-ai name variants. `applySiteName()` no longer overwrites
+  `document.title` (the static SEO title must survive).
+- Google Search Console verification meta
+  (`CiAQcyEJTZdj8tL7xGDxXwD9GlTVKaDuL7eweuHNbz8`) on index.html and all
+  three policy pages (the only token value in any file — public by design).
+- Policy pages are now full standalone HTML documents (title, description,
+  canonical, OG, GSC meta) AND still load in the About modal: `openPolicy`
+  parses the fetched document with DOMParser and injects only its body.
+- sitemap.xml: `/` + 3 policy pages (lastmod 2026-11-11), no adminpanal.
+  robots.txt: Allow `/`, disallow `/adminpanal`, `/admin.html`, `/api/`.
+  manifest.json description rewritten (worm-ai wording, login required).
+
+### 4) Admin analytics (live from Supabase, dashboard tab)
+- New stat cards: new users today, new users last 7 days, total logins,
+  logins today. New "Analytics" card: average logins per day (total logins
+  ÷ days since first login, with the first-login date shown), help messages
+  open vs answered, payment orders pending vs approved.
+- Help tab shows an open-count badge ("N open").
+
+### 5) Help Center (verified end to end in code)
+- Flow is sound as built (RLS: users INSERT/SELECT own, admins FOR ALL;
+  user sends → admin sees email + message + reply box → reply sets
+  `reply`, `status='replied'`, `replied_at` → user sees it in Help Center).
+- Polish: All/Open/Replied filter on the Help tab; reply box now always
+  shown (prefilled with the existing reply) so the admin can also follow
+  up on replied messages; replying refreshes the dashboard badge.
+
+### 6) APK removed
+- `Badshah222-ai.apk` deleted; install bar, sidebar pill and install-guide
+  APK content removed (install is now Add to Home Screen / PWA only).
+  `applyApkUrl` and the admin "APK download URL" setting removed;
+  `_worker.js` APK headers removed. PWA icons kept. README/DEPLOY note the
+  removal (new APK to be added later by the user).
+
+### 7) New free Groq models
+- `groq-qwen` (Qwen, Groq `qwen/qwen3.8-27b`) and `groq-allam` (Allam 2 7B,
+  Groq `allam-2-7b`) added to the chat picker, MODEL_COSTS, admin model
+  toggles, README and DEPLOY. `groq-gpt-oss-120b` stays the default
+  (fallback `openai/gpt-oss-20b`). Edge Function routes each `groq-*` app
+  id through its own chain: `{"groq-gpt-oss-120b": [120b, 20b],
+  "groq-qwen": [qwen, 20b], "groq-allam": [allam, 20b]}`.
+  Total models now **15** (12 chat + 3 image). GROQ_API_KEY secret is
+  updated separately by the parent — the function only reads `Deno.env`.
+
+### 8) Backend hardening (Edge Function, chat contract unchanged)
+- Groq: one retry on a 5xx response or network/timeout per model before
+  falling to the next model in the chain; 429 stops the chain and returns
+  429 "Rate limited — please wait a moment and try again."; other failures
+  return 502 "The AI service is down right now — please try again in a
+  moment." Raw upstream error text is no longer returned for Groq.
+- GET chat + FT fetch failures now return the same clear "service down"
+  message (was "AI service unavailable"). FT upstream error text is still
+  passed through when the upstream answers with an error body.
+- New `fetchWithTimeout` (30s) for all tool fetches (weather, temp mail,
+  FB downloader), which previously had no timeout. TTS (30s/part), Groq
+  (60s), GET chat (60s), image gen (90s) and FT (60s) timeouts unchanged.
+- Unchanged: Pro plans, prices, payment numbers, IBAN, FT Fusion keys and
+  models, auth model (email+password, no OTP), policies content. No video
+  mode added.
+
+### Not done here (parent-side, live Supabase work)
+- **Lifetime Pro login for zainartsstudio@gmail.com** (user request): the
+  account must be created via Supabase Auth and granted Pro from the admin
+  panel (Grant Pro → Specific end date, far future — e.g. 2099 — or Custom
+  duration 3650 days). No password was written in any file; create it live.
+- **GROQ_API_KEY secret update** (parent does this separately).
+- **GSC sitemap submission** (user-side) and live tests after deploy.
+
+### Verification done (this pass)
+- `node --check`: app.js ✓, admin.js ✓, _worker.js ✓ (as .mjs),
+  config.js ✓, supabase-config.js ✓, library.js ✓.
+- `tsc --noEmit` on the Edge Function: only the two expected environment
+  errors (esm.sh URL import + `Deno` global); no syntax/logic errors.
+- Secret scan over the v2 tree: **CLEAN** — no `gsk_` / `sk-` / password
+  value anywhere. The only token in files is the public GSC verification
+  meta (by design). The anon key in supabase-config.js is the public
+  client key (unchanged from v2).
+- Local static serve smoke check: index.html (new title + GSC meta, no
+  admin link, no APK), adminpanal.html (noindex, analytics ids, no APK
+  card), admin.html → 404, policies (standalone docs + GSC meta),
+  sitemap.xml (4 URLs, no adminpanal), robots.txt, manifest.json — all 200.
+- DOMParser policy extraction + error-bubble rendering were verified by
+  code inspection only (no browser here) — first live run should test:
+  register → login as admin → redirect to /adminpanal → dashboard
+  analytics → send a chat message with a failing provider (or a Pro model
+  as a free user) and confirm the red error bubble shows the real reason.

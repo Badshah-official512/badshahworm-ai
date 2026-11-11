@@ -2,9 +2,7 @@
 
 > v2 mein backend poora Supabase par hai. Cloudflare `_worker.js` ka `/api/chat`
 > proxy **khatam** kar diya gaya hai — ab wo sirf static hosting + security
-> headers + APK download headers ke liye hai. AI calls Supabase Edge Function
-> `ai-chat` se hoti hain. **API key kahin bhi file mein nahi hai** — wo sirf
-> Supabase Edge Function secret `FT_FUSION_API_KEY` mein set hoti hai.
+> headers ke liye hai. AI calls Supabase Edge Function `ai-chat` se hoti hain. **API key kahin bhi file mein nahi hai** — wo sirf Supabase Edge Function secrets (`FT_FUSION_API_KEY`, `GROQ_API_KEY`, `OPENWEATHER_API_KEY`) mein set hoti hain.
 
 ## 0) Pehle se chahiye
 
@@ -51,7 +49,7 @@ content paste karo → Run. Ye banata hai:
   a user's Pro expiry directly; sab SECURITY DEFINER + admin check).
 - Seed plans: 1 Month Rs 100, 3 Months Rs 230, 5 Months Rs 400,
   8 Months Rs 699, 1 Year Rs 999, Custom (price 0, admin set karega).
-- Seed `admin_settings`: maintenance, models, apk_url, payment_accounts,
+- Seed `admin_settings`: maintenance, models, payment_accounts,
   safety_filter (Free-plan safety on/off), site_name, support_contact.
 - Private Storage bucket `payment-proofs` + policies (user apni file
   `<user-uuid>/<filename>` path par upload karta hai; admin sab dekh sakta hai).
@@ -65,6 +63,8 @@ DROP POLICY IF EXISTS).
 cd badshah-ai-v2
 supabase functions deploy ai-chat --no-verify-jwt
 supabase secrets set FT_FUSION_API_KEY=<tumhari-key-yahan>
+supabase secrets set GROQ_API_KEY=<tumhari-groq-key-yahan>
+supabase secrets set OPENWEATHER_API_KEY=<tumhari-openweather-key-yahan>
 ```
 
 - `--no-verify-jwt` sahi hai: JWT function ke andar manually verify hota hai
@@ -72,11 +72,16 @@ supabase secrets set FT_FUSION_API_KEY=<tumhari-key-yahan>
 - Secret set karne ke baad function dobara deploy karne ki zaroorat nahi —
   secret turant active hota hai.
 - Function kya karti hai: user ka JWT check → `profiles` se Pro status →
-  model gating (Free: lexus/spark/uni; Pro: baaki 8) → Free users ke prompt
-  par safety instruction lagti hai **sirf jab admin ka safety filter ON ho**
-  (`admin_settings` → `safety_filter`; default ON), Pro ka prompt as-is
-  jata hai → upstream FT Fusion API call (key sirf env se) → JSON jawab
-  `{ok, kind, text | image_url | image_base64}`.
+  model gating (Free: Groq GPT-OSS 120B / Qwen / Allam 2 7B, gpt-3-5,
+  pollinations-text; free image: pollinations-image / stable-diffusion;
+  Pro: fusion-synth, vortex, abyss, shadow, reaper, dread, void + image
+  fusion-astra) → Free users ke prompt par safety instruction lagti hai
+  **sirf jab admin ka safety filter ON ho** (`admin_settings` →
+  `safety_filter`; default ON), Pro ka prompt as-is jata hai → upstream
+  API call (key sirf env se) → JSON jawab
+  `{ok, kind, text | image_url | image_base64}`. Groq calls mein 5xx par
+  ek retry hoti hai; rate limit (429) par saaf "Rate limited" error aur
+  baaki upstream failures par "service down" error milta hai.
 
 ## 5) Admin user banao
 
@@ -93,20 +98,25 @@ SELECT id, email FROM auth.users WHERE email = 'shahzain1751@gmail.com';
 UPDATE public.profiles SET is_admin = true WHERE id = '<user-id>';
 ```
 
-- Admin panel ka link sidebar mein tab dikhega jab `is_admin = true` ho.
-- Admin panel: `admin.html` (alag page, admin-only guard).
+- Admin panel ka **koi link main page par nahi hai** — panel sirf
+  `adminpanal.html` par khulta hai (`https://badshah222-wormai.pages.dev/adminpanal`).
+  Admin login kare to wo seedha admin panel par redirect ho jata hai (sirf
+  login button se; wapas "Back to app" se aa sakta hai). Admin panel: `adminpanal.html`
+  (alag page, admin-only guard, search engines se `noindex`).
 
 ## 6) Frontend deploy karo (Cloudflare Pages)
 
-Poora `badshah-ai-v2` folder deploy karo (pehle jaisa hi project, badshah222):
+Poora `badshah-ai-v2` folder deploy karo — Cloudflare Pages project
+**badshah222-wormai** (https://badshah222-wormai.pages.dev), GitHub repo
+`Badshah-official512/badshahworm-ai` (branch main) se connected hai, is
+liye GitHub push karte hi auto-deploy hota hai. Framework preset None,
+build command khaali, output directory root (/).
 
-- Dashboard: Workers & Pages → project → Create deployment → folder upload,
-  ya terminal: `npx wrangler pages deploy . --project-name badshah222`
-- `_worker.js` ab sirf headers + APK serve karta hai; us mein **koi secret
+- `_worker.js` ab sirf headers serve karta hai; us mein **koi secret
   set karne ki zaroorat nahi** (purana `BADSHAH_API_KEY` Cloudflare secret
   ab istemal nahi hota — use hata sakte ho).
 - Deploy ke baad test karo: register → login → free model se chat → Buy Pro
-  flow → admin panel se order approve → Pro model unlock.
+  flow → admin panel (`/adminpanal`) se order approve → Pro model unlock.
 
 ## 7) Pro plans aur payment accounts
 
@@ -127,9 +137,9 @@ Payment (manual — pehle pay, phir order form):
 > hai. Agar galat ho to `admin_settings` → `payment_accounts` se badal lo
 > (admin panel → Settings → Payment accounts).
 
-## 8) Models (11 total — fusion-pulse hataya gaya)
+## 8) Models (15 total — fusion-pulse hataya gaya)
 
-- **Free** (koi bhi registered user): chat `groq-gpt-oss-120b` (Groq GPT-OSS 120B), `gpt-3-5`, `pollinations-text` (free);
+- **Free** (koi bhi registered user): chat `groq-gpt-oss-120b` (Groq GPT-OSS 120B, fallback gpt-oss-20b), `groq-qwen` (Groq Qwen 3 27B), `groq-allam` (Groq Allam 2 7B), `gpt-3-5`, `pollinations-text` (free);
   image `pollinations-image` (Pollinations) and `stable-diffusion`.
 - **Read aloud (TTS):** every AI message has a 🔊 button. The Edge Function
   (`mode: "tts"`) turns the reply into MP3 parts via
@@ -148,8 +158,8 @@ Payment (manual — pehle pay, phir order form):
   image `fusion-astra`.
 - `fusion-pulse` ab kahin nahi hai (frontend, Edge Function aur admin panel
   se remove; Edge Function use 400 se reject karta hai).
-- Note: task brief mein "(12)" likha tha, lekin list mein pulse hata kar
-  **11** models bante hain — yehi sahi count hai.
+- Free chat models ab 5 hain (3 Groq + 2 free providers); kul 15 models hain
+  (12 chat + 3 image).
 
 ## 9) Policies, voice, aur baaki features
 
@@ -164,16 +174,16 @@ Payment (manual — pehle pay, phir order form):
 - Maintenance mode aur model on/off admin panel → Settings se control hote
   hain (`admin_settings` table).
 
-## 10) SEO (pehle jaisa — code mein ho chuka)
+## 10) SEO (v2.2 — mukammal)
 
-Title, description, canonical, Open Graph/Twitter, JSON-LD, robots.txt,
-sitemap.xml, og-image.png. Google Search Console verification aur sitemap
-submission ab bhi user ko khud karni hai (pehle wale steps DEPLOY.md ke
-purane version mein the; site URL `https://badshah222.pages.dev`).
+Title: "Badshah222 official worm ai | worm ai by badshah 222 (badshah worm ai 222 / worm ai by badshah / badshahworm / Mr Zain worm ai)" — description, keywords, Open Graph/Twitter, JSON-LD (WebApplication), canonical `https://badshah222-wormai.pages.dev/`, robots.txt, sitemap.xml (main page + 3 policy pages; admin panel list nahi hota). Google Search Console verification meta tag `index.html` aur teeno policy pages mein hai. Admin panel (`/adminpanal`) par `noindex, nofollow` hai. GSC mein sitemap submit karna aur verification confirm karna ab bhi user ko khud karna hai.
 
-## Android App (APK)
+## Android App (APK) — HATA DIYA GAYA (v2.2)
 
-- `Badshah222-ai.apk` site ke root mein hai:
-  `https://badshah222.pages.dev/Badshah222-ai.apk`
-- Nayi APK banayein to wahi file naam se replace karke dobara deploy karein.
-- Purani APK ka SHA-256: 24a4e1a66475d2b141bee8936342e63ec71f140dad5244fd8c4edb7e9f87a686
+- APK (`Badshah222-ai.apk`) v2.2 mein remove kar diya gaya hai — file delete,
+  download bar/links aur install guide se hata diye gaye. User naya APK
+  banayega to baad mein add hoga.
+- Ab install sirf **Add to Home Screen** (PWA) se hota hai: Android Chrome
+  mein browser menu → "Add to Home screen", iPhone Safari mein Share →
+  "Add to Home Screen". PWA icons (`icon.png`, `icon-192.png`,
+  `icon-512.png`) waise hi maujood hain.

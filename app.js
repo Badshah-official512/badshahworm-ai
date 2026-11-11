@@ -54,6 +54,8 @@ const THINKING_PHRASES = ['Thinking', 'Thinking', 'Thinking', 'Thinking', 'Think
 const MODELS = {
   chat: {
     'groq-gpt-oss-120b':  { label: 'GPT-OSS 120B', icon: 'fa-brain', pro: false },
+    'groq-qwen': { label: 'Qwen', icon: 'fa-atom', pro: false },
+    'groq-allam': { label: 'Allam 2 7B', icon: 'fa-language', pro: false },
     'gpt-3-5': { label: 'GPT 3.5', icon: 'fa-comment', pro: false },
     'pollinations-text': { label: 'Pollinations', icon: 'fa-feather', pro: false },
     'fusion-synth':  { label: 'Synth',  icon: 'fa-wand-magic-sparkles', pro: true },
@@ -74,6 +76,8 @@ const MODELS = {
 
 const MODEL_COSTS = {
   'groq-gpt-oss-120b':  { inputPerWord: 2, outputPerWord: 4 },
+  'groq-qwen': { inputPerWord: 2, outputPerWord: 4 },
+  'groq-allam': { inputPerWord: 2, outputPerWord: 4 },
   'gpt-3-5': { inputPerWord: 2, outputPerWord: 4 },
   'pollinations-text': { inputPerWord: 2, outputPerWord: 4 },
   'fusion-synth':  { inputPerWord: 3, outputPerWord: 6 },
@@ -90,7 +94,7 @@ const MODEL_COSTS = {
 
 const FB = {
   ok: false,
-  cfg: { maintenance: { on: false }, models: {}, apkUrl: undefined, subscriptionPlans: {}, subscriptionContact: '' }
+  cfg: { maintenance: { on: false }, models: {}, subscriptionPlans: {}, subscriptionContact: '' }
 };
 const Auth = {
   uid: null, user: 'Badshah222', email: '', tokenLimit: null, subscription: null,
@@ -149,14 +153,6 @@ function applyConfig() {
   if (ov) {
     ov.style.display = ((m.on || maintenanceMode) && !currentUserProfile.is_admin) ? 'flex' : 'none';
     const t = $('#maintenanceText'); if (t && m.message) t.textContent = m.message;
-  }
-  const apk = $('#appDownloadBtn');
-  if (apk) {
-    const row = apk.closest('.settings-row');
-    if (typeof FB.cfg.apkUrl === 'string') {
-      if (FB.cfg.apkUrl.trim()) { apk.href = FB.cfg.apkUrl.trim(); if (row) row.style.display = ''; }
-      else if (row) row.style.display = 'none';
-    }
   }
   if (typeof renderModelSelector === 'function' && typeof state !== 'undefined' && state.settings) renderModelSelector();
   updateTokenBadgeFromAuth();
@@ -887,7 +883,7 @@ function renderActiveChat() {
 
 function buildMessageEl(m) {
   const div = document.createElement('div');
-  div.className = `message ${m.role}`;
+  div.className = `message ${m.role}${m.type === 'error' ? ' is-error' : ''}`;
   div.dataset.id = m.id;
 
   let mediaHtml = '';
@@ -911,8 +907,13 @@ function buildMessageEl(m) {
 
   const actions = document.createElement('div');
   actions.className = 'msg-actions';
-  
-  if (m.role === 'user') {
+
+  if (m.type === 'error') {
+    // Error bubbles: only Copy + Regenerate — no voice, no continue.
+    actions.innerHTML = `
+      <button class="mini-btn act-copy"><i class="fa-solid fa-copy"></i> Copy</button>
+      <button class="mini-btn act-regen"><i class="fa-solid fa-rotate"></i> Regenerate</button>`;
+  } else if (m.role === 'user') {
     actions.innerHTML = `<button class="mini-btn act-edit"><i class="fa-solid fa-pen"></i> Edit</button>`;
   } else if (m.type === 'image' || m.type === 'video') {
     actions.innerHTML = `
@@ -1603,6 +1604,13 @@ async function handleSend() {
   if (!typedText && !attachment) return;
   if (state.generating) return;
 
+  // Not logged in: say so in the chat instead of calling the API and
+  // failing silently (the Edge Function would answer 401).
+  if (!currentUser) {
+    toast('Please login first to use the AI.', 'error');
+    return;
+  }
+
   if (state.editingMessageId) {
     await applyEditAndResend(typedText);
     return;
@@ -1700,15 +1708,59 @@ function stopGeneration() {
 // All AI traffic goes through the Supabase Edge Function 'ai-chat'.
 // The upstream API key lives only as an Edge Function secret — never in the frontend.
 // (Free-plan safety filtering happens server-side in the Edge Function.)
+//
+// Error display rule (v2.2): the server's own error message is NEVER
+// swallowed. callAiEdge throws the server's {ok:false, error} text, and the
+// generation functions show it inside the chat as a visible error bubble.
+// A failed reply must never look like an empty or hanging answer.
 async function callAiEdge(model, q) {
   if (!supabaseClient) throw new Error('Supabase is not configured yet.');
   const { data, error } = await supabaseClient.functions.invoke('ai-chat', { body: { model, q } });
-  if (error) throw new Error(error.message || 'AI request failed');
+  if (error) {
+    // A non-2xx reply from the Edge Function still carries our JSON body
+    // ({ok:false, error:"..."}). Surface the server's own message instead
+    // of the generic "Edge Function returned a non-2xx status code" text.
+    let serverMsg = '';
+    try {
+      const ctx = error.context;
+      if (ctx && typeof ctx.clone === 'function') {
+        const parsed = await ctx.clone().json();
+        if (parsed && typeof parsed.error === 'string') serverMsg = parsed.error;
+      }
+    } catch (e) { /* body already consumed or not JSON — fall through */ }
+    if (!serverMsg && data && typeof data.error === 'string') serverMsg = data.error;
+    throw new Error(serverMsg || error.message || 'AI request failed');
+  }
   if (!data || data.ok === false) throw new Error((data && data.error) || 'AI request failed');
   return data;
 }
+
+// Turn a raw error into the clear message the user sees in the chat.
+// The three cases the user must be able to tell apart:
+//   "needs Pro"  -> this model is Pro-only
+//   "rate limited" -> wait a moment, then retry
+//   everything else upstream -> the AI service is down right now
+function friendlyAiError(err) {
+  const raw = (err && err.message) || (typeof err === 'string' ? err : '') || '';
+  const lower = raw.toLowerCase();
+  if (/needs pro|pro only|upgrade/i.test(raw)) return 'This model needs Pro. Upgrade from the app to use it.';
+  if (/not authenticated|session expired|invalid jwt|401/.test(raw)) return 'Your session expired — please login again.';
+  if (/rate limit|too many requests|429/.test(lower)) return 'Too many requests right now — please wait a moment and try again.';
+  if (/supabase is not configured/.test(lower)) return 'Supabase is not configured yet.';
+  if (/no image returned/.test(lower)) return 'No image returned — please try again.';
+  if (/ai request failed|service unavailable|upstream|down|empty response|network|fetch failed|failed to fetch|timeout|timed out|abort/i.test(raw)) {
+    return 'The AI service is down right now — please try again in a moment.';
+  }
+  if (!raw) return 'The AI could not respond right now. Please try again in a moment.';
+  return raw;
+}
+function isProError(err) {
+  const raw = (err && err.message) || (typeof err === 'string' ? err : '') || '';
+  return /needs pro|pro only|upgrade/i.test(raw);
+}
 function aiPrecheck(model) {
   if (!supabaseClient) { toast('Supabase is not configured yet.', 'error'); return false; }
+  if (!currentUser) { toast('Please login first to use the AI.', 'error'); return false; }
   if (maintenanceMode && !currentUserProfile.is_admin) { toast('BADSHAH AI is under maintenance right now.', 'error'); return false; }
   if (isModelLocked(model)) { toast('This model needs Pro — tap Buy Pro to upgrade.', 'error'); openBuyPro(); return false; }
   if (!modelState(model).enabled || !modelAvailable(model)) { toast('This model is under maintenance right now.', 'error'); return false; }
@@ -1725,17 +1777,29 @@ async function runChatGeneration(chat, text) {
   state.abortController = new AbortController();
   const signal = state.abortController.signal;
   const inTok = Math.ceil(countWords(text) * (MODEL_COSTS[model]?.inputPerWord ?? 2));
-  let reply = '', ok = false;
+  let reply = '', ok = false, chatErr = null;
   try {
     const data = await callAiEdge(model, buildContextPrompt(chat, text));
     if (signal.aborted) return;
     reply = (data && data.text) || ''; ok = reply.length > 0;
+    if (!ok) chatErr = new Error('Empty response from AI service');
   } catch (err) {
     if (signal.aborted) return;
-    reply = 'Sorry, the AI could not respond right now. Please try again in a moment.';
+    chatErr = err;
   }
   removeSkeleton();
   if (!state.generating) return;
+  // A failed reply is shown in the chat as a visible error bubble with the
+  // real reason — never a silent hang and never a fake "sorry" answer.
+  if (!ok) {
+    appendErrorMessage(chat, friendlyAiError(chatErr));
+    if (isProError(chatErr)) openBuyPro();
+    fbLogUsage(model, 0, false);
+    setGenerating(false);
+    if (typeof refreshContextGuard === 'function') refreshContextGuard();
+    renderChatList();
+    return;
+  }
   let outTok = 0;
   if (ok) {
     const before = state.usage.tokensUsedLifetime || 0;
@@ -1776,7 +1840,8 @@ async function runImageGeneration(chat, text) {
     removeSkeleton();
     if (signal.aborted || !state.generating) return;
     fbLogUsage(model, 0, false);
-    appendErrorMessage(chat, 'Sorry, the image could not be generated right now. Please try again.');
+    appendErrorMessage(chat, friendlyAiError(err));
+    if (isProError(err)) openBuyPro();
   }
   setGenerating(false);
   renderChatList();
@@ -1784,7 +1849,7 @@ async function runImageGeneration(chat, text) {
 
 
 function appendErrorMessage(chat, text) {
-  const errMsg = { id: uid(), role: 'assistant', content: text, type: 'text', time: Date.now() };
+  const errMsg = { id: uid(), role: 'assistant', content: text, type: 'error', time: Date.now() };
   chat.messages.push(errMsg); persistChat(chat);
   const chatBoxEl = $('#chatBox');
   if (chatBoxEl) {
@@ -1891,7 +1956,7 @@ async function continueMessage(chat, m) {
     await persistChat(chat); renderActiveChat();
   } catch (err) {
     removeSkeleton();
-    if (!signal.aborted) { fbLogUsage(model, 0, false); toast('Could not continue right now.', 'error'); }
+    if (!signal.aborted) { fbLogUsage(model, 0, false); appendErrorMessage(chat, friendlyAiError(err)); }
   }
   setGenerating(false);
 }
@@ -2046,13 +2111,11 @@ function showAuthLoggedOut() {
   if (registerForm) registerForm.hidden = true;
   const enterBtn = $('#enterAppBtn');
   if (enterBtn) enterBtn.hidden = true;
-  const adminBtn = $('#openAdminBtn');
-  if (adminBtn) adminBtn.hidden = true;
   updateTokenBadgeFromAuth();
   if (typeof renderModelSelector === 'function') renderModelSelector();
 }
 
-async function afterLogin(user, recordHistory) {
+async function afterLogin(user, recordHistory, opts) {
   currentUser = user;
   await loadUserProfile();
   const authBox = $('#authBox');
@@ -2061,6 +2124,12 @@ async function afterLogin(user, recordHistory) {
   if (enterBtn) enterBtn.hidden = false;
   updateTokenBadgeFromAuth();
   if (recordHistory) recordLoginHistory(user);
+  // Admins who just logged in (login/register button, NOT a restored
+  // session) go straight to the admin panel at /adminpanal. Session
+  // restores never redirect, so "Back to app" from the panel works.
+  if (opts && opts.redirectAdmin && currentUserProfile.is_admin) {
+    window.location.href = 'adminpanal.html';
+  }
 }
 
 function applyProfile(p) {
@@ -2074,8 +2143,6 @@ function applyProfile(p) {
   if (currentUserProfile.pro_expires_at && new Date(currentUserProfile.pro_expires_at) < new Date()) {
     currentUserProfile.is_pro = false;
   }
-  const adminBtn = $('#openAdminBtn');
-  if (adminBtn) adminBtn.hidden = !currentUserProfile.is_admin;
 }
 
 // 7) PROFILE + PLAN LOAD (safe fallbacks: app keeps working as Free if tables are missing)
@@ -2104,20 +2171,12 @@ async function loadUserProfile() {
   if (typeof renderModelSelector === 'function') renderModelSelector();
 }
 
-// Apply the admin's APK URL to every APK download link in the app.
-function applyApkUrl(url) {
-  if (!url || typeof url !== 'string' || !url.trim()) return;
-  const clean = url.trim();
-  document.querySelectorAll('a[href$=".apk"]').forEach(function (a) { a.href = clean; });
-  const btn = $('#apkDownloadBtn');
-  if (btn) btn.href = clean;
-}
-
 // Apply the admin's site display name to the brand spots in the app.
+// NOTE: document.title is intentionally NOT changed here — the static
+// <title> in index.html is the SEO title and must stay as-is.
 function applySiteName(name) {
   if (!name || typeof name !== 'string' || !name.trim()) return;
   const clean = name.trim();
-  document.title = clean + ' — AI Chat & Image Generator';
   const brand = document.querySelector('.brand-text strong');
   if (brand) brand.textContent = clean;
   const aboutH = document.querySelector('.about-body h3');
@@ -2157,9 +2216,6 @@ async function loadAdminSettings() {
         if (value.bank_name) PAYMENT_ACCOUNTS.bank.label = String(value.bank_name);
         if (value.iban) PAYMENT_ACCOUNTS.bank.iban = String(value.iban);
       }
-    } else if (key === 'apk_url') {
-      const url = value && typeof value === 'object' ? value.url : value;
-      if (typeof url === 'string' && url.trim()) applyApkUrl(url.trim());
     } else if (key === 'site_name') {
       const name = value && typeof value === 'object' ? (value.name || value.value) : value;
       if (typeof name === 'string' && name.trim()) applySiteName(name.trim());
@@ -2238,8 +2294,8 @@ function wireAuthUI() {
     if (error) { if (errEl) errEl.textContent = error.message || 'Login failed.'; return; }
     const user = (data && (data.user || (data.session && data.session.user))) || null;
     if (!user) { if (errEl) errEl.textContent = 'Login failed — please try again.'; return; }
-    await afterLogin(user, true);
     toast('Welcome back!', 'success');
+    await afterLogin(user, true, { redirectAdmin: true });
   });
 
   $('#registerBtn')?.addEventListener('click', async () => {
@@ -2266,8 +2322,8 @@ function wireAuthUI() {
     if (error) { if (errEl) errEl.textContent = error.message || 'Could not create account.'; return; }
     const user = (data && (data.user || (data.session && data.session.user))) || null;
     if (data && data.session && user) {
-      await afterLogin(user, true);
       toast('Account created — you are logged in.', 'success');
+      await afterLogin(user, true, { redirectAdmin: true });
     } else if (user) {
       if (errEl) errEl.textContent = 'Account created — please login.';
       const loginForm = $('#loginForm');
@@ -2500,6 +2556,8 @@ function wireHelpCenter() {
 }
 
 // 12) POLICIES
+// Policy pages are full standalone HTML documents (SEO). The modal only
+// needs the page body, so parse the document and inject its <body> content.
 async function openPolicy(file, title) {
   const titleEl = $('#policyModalTitle');
   const bodyEl = $('#policyModalBody');
@@ -2510,7 +2568,13 @@ async function openPolicy(file, title) {
     const r = await fetch('policies/' + file);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const html = await r.text();
-    if (bodyEl) bodyEl.innerHTML = html;
+    let content = html;
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const bodyHtml = doc.body ? doc.body.innerHTML.trim() : '';
+      if (bodyHtml) content = bodyHtml;
+    } catch (e) { /* fall back to the raw HTML */ }
+    if (bodyEl) bodyEl.innerHTML = content;
   } catch (e) {
     if (bodyEl) bodyEl.textContent = 'Policy file could not be loaded.';
   }
@@ -2549,19 +2613,10 @@ document.addEventListener('click', (e) => {
   const bar = $('#installBar'); if (!bar) return;
   const KEY = 'badshahai_install_bar_hidden';
   const store = { get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }, set(v) { try { localStorage.setItem(KEY, v); } catch (e) {} } };
-  const ua = navigator.userAgent || '';
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isAndroid = /Android/i.test(ua);
   const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
   const hiddenAt = Number(store.get() || 0);
   if (standalone || (hiddenAt && Date.now() - hiddenAt < 3 * 24 * 3600 * 1000)) { bar.classList.add('is-hidden'); }
   else { requestAnimationFrame(() => bar.classList.add('show')); }
-  if (isIOS) {
-    const apk = $('#apkDownloadBtn'); if (apk) { apk.removeAttribute('href'); apk.removeAttribute('download'); apk.querySelector('span').textContent = 'Add to Home Screen'; apk.addEventListener('click', (e) => { e.preventDefault(); openModal('#installGuideModal'); }); }
-    const sub = $('#ibSub'); if (sub) sub.innerHTML = '<i class="fa-solid fa-infinity"></i> Free &amp; Unlimited &bull; <i class="fa-brands fa-apple"></i> Works on iPhone';
-  } else if (!isAndroid) {
-    const sub = $('#ibSub'); if (sub) sub.innerHTML = '<i class="fa-solid fa-infinity"></i> Free &amp; Unlimited &bull; <i class="fa-brands fa-android"></i> Android app &bull; 3.2 MB';
-  }
   $('#installClose')?.addEventListener('click', () => { bar.classList.remove('show'); setTimeout(() => bar.classList.add('is-hidden'), 400); store.set(String(Date.now())); });
   $('#installHowBtn')?.addEventListener('click', () => openModal('#installGuideModal'));
   let deferred = null;
@@ -2571,8 +2626,6 @@ document.addEventListener('click', (e) => {
     deferred.prompt(); try { await deferred.userChoice; } catch (e) {} deferred = null; const b = $('#pwaInstallBtn'); if (b) b.hidden = true;
   });
   window.addEventListener('appinstalled', () => { bar.classList.remove('show'); setTimeout(() => bar.classList.add('is-hidden'), 400); });
-  const apkLinks = $all('a[href$="Badshah222-ai.apk"]');
-  apkLinks.forEach(a => a.addEventListener('click', () => { if (!isIOS) { toast('Downloading BADSHAH AI app...', 'success'); if (!a.closest('#installGuideModal')) setTimeout(() => openModal('#installGuideModal'), 900); } }));
 })();
 
 (async function boot() {

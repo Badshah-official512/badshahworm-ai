@@ -1,9 +1,9 @@
-// BADSHAH AI - Cloudflare Pages "advanced mode" worker (v2).
+// BADSHAH AI - Cloudflare Pages "advanced mode" worker (v2.2).
 //
 // v2 CHANGE: the old /api/chat proxy is REMOVED. All AI calls now go through the
 // Supabase Edge Function `ai-chat` (JWT-checked, free/pro gated server-side).
-// This worker is kept ONLY for static hosting: security headers + correct
-// APK download headers. No API key lives here anymore — the FT Fusion key is
+// This worker is kept ONLY for static hosting with security headers.
+// No API key lives here anymore — the FT Fusion key is
 // a Supabase Edge Function secret (FT_FUSION_API_KEY), set in the Supabase
 // dashboard. Do NOT add any API key to this file.
 
@@ -30,11 +30,6 @@ export default {
     }
     const res = await env.ASSETS.fetch(request);
     const out = new Response(res.body, res);
-    if (url.pathname.toLowerCase().endsWith('.apk')) {
-      out.headers.set('content-type', 'application/vnd.android.package-archive');
-      out.headers.set('content-disposition', 'attachment; filename="Badshah222-ai.apk"');
-      out.headers.set('cache-control', 'public, max-age=300');
-    }
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
     return out;
   }

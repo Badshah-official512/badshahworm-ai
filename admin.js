@@ -105,9 +105,11 @@ function formatRs(amount) {
 // Constants / state
 // ---------------------------------------------------------------------------
 
-// All 12 models the app offers (chat + image), used for the settings toggles.
+// All 15 models the app offers (chat + image), used for the settings toggles.
 const MODELS = [
   { id: 'groq-gpt-oss-120b', kind: 'chat' },
+  { id: 'groq-qwen', kind: 'chat' },
+  { id: 'groq-allam', kind: 'chat' },
   { id: 'gpt-3-5', kind: 'chat' },
   { id: 'pollinations-text', kind: 'chat' },
   { id: 'fusion-synth', kind: 'chat' },
@@ -125,7 +127,6 @@ const MODELS = [
 const SETTING_KEYS = [
   'maintenance',
   'models',
-  'apk_url',
   'payment_accounts',
   'custom_plan',
   'support_contact',
@@ -140,6 +141,7 @@ let ordersCache = []; // rows from payment_orders
 let helpCache = []; // rows from help_messages
 let profilesById = {}; // id -> { email, display_name }
 let ordersFilter = 'all';
+let helpFilter = 'all';
 let settingsLoaded = false;
 let usersLoaded = false;
 let ordersLoaded = false;
@@ -278,6 +280,86 @@ async function loadDashboard() {
     return sum + (Number(row.amount_pkr) || 0);
   }, 0);
   el('statRevenue').textContent = formatRs(revenue);
+
+  // --- Analytics (live from Supabase) ---
+  const now = new Date();
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000).toISOString();
+
+  // New users today + last 7 days (profiles.created_at).
+  const newToday = await supabaseClient
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', todayStart);
+  if (newToday.error) throw newToday.error;
+  el('statNewToday').textContent = newToday.count != null ? newToday.count : '—';
+
+  const new7d = await supabaseClient
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', sevenDaysAgo);
+  if (new7d.error) throw new7d.error;
+  el('statNew7d').textContent = new7d.count != null ? new7d.count : '—';
+
+  // Total logins + logins today.
+  const loginsTotal = await supabaseClient
+    .from('login_history')
+    .select('id', { count: 'exact', head: true });
+  if (loginsTotal.error) throw loginsTotal.error;
+  const totalLogins = loginsTotal.count || 0;
+  el('statLoginsTotal').textContent = totalLogins;
+
+  const loginsToday = await supabaseClient
+    .from('login_history')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', todayStart);
+  if (loginsToday.error) throw loginsToday.error;
+  el('statLoginsToday').textContent = loginsToday.count != null ? loginsToday.count : '—';
+
+  // Average logins per day = total logins ÷ days since the first login.
+  const firstLogin = await supabaseClient
+    .from('login_history')
+    .select('created_at')
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (firstLogin.error) throw firstLogin.error;
+  const firstAt = firstLogin.data && firstLogin.data[0] ? new Date(firstLogin.data[0].created_at) : null;
+  let avgLogins = 0;
+  let avgNote = 'Average = total logins ÷ days since the first login.';
+  if (firstAt && !Number.isNaN(firstAt.getTime()) && totalLogins > 0) {
+    const days = Math.max(1, Math.ceil((now.getTime() - firstAt.getTime()) / (24 * 3600 * 1000)));
+    avgLogins = totalLogins / days;
+    avgNote = 'Average = ' + totalLogins + ' logins ÷ ' + days + ' day(s) since first login (' +
+      fmtDate(firstAt.toISOString()) + ').';
+  }
+  el('statAvgLogins').textContent = totalLogins > 0 ? avgLogins.toFixed(1) + ' / day' : '0 / day';
+  el('analyticsNote').textContent = avgNote;
+
+  // Help messages: open vs answered.
+  const helpOpen = await supabaseClient
+    .from('help_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'open');
+  if (helpOpen.error) throw helpOpen.error;
+  el('statHelpOpen').textContent = helpOpen.count != null ? helpOpen.count : '—';
+  // Open-count badge on the Help tab so waiting reports are visible at a glance.
+  const helpBadge = el('helpOpenBadge');
+  if (helpBadge) {
+    const openCount = helpOpen.count || 0;
+    helpBadge.textContent = openCount + ' open';
+    helpBadge.hidden = openCount === 0;
+  }
+
+  const helpAnswered = await supabaseClient
+    .from('help_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'replied');
+  if (helpAnswered.error) throw helpAnswered.error;
+  el('statHelpAnswered').textContent = helpAnswered.count != null ? helpAnswered.count : '—';
+
+  // Payment orders: pending vs approved.
+  el('statOrdersPending').textContent = pendingCount.count != null ? pendingCount.count : '—';
+  el('statOrdersApproved').textContent = (approved.data || []).length;
 
   // Recent logins (latest 10), with the user's email resolved from profiles.
   const logins = await supabaseClient
@@ -836,12 +918,17 @@ async function loadHelp() {
 
 function renderHelp() {
   const list = el('helpList');
-  if (!helpCache.length) {
-    list.innerHTML = '<p class="empty">No help messages yet.</p>';
+  const filtered = helpCache.filter(function (m) {
+    return helpFilter === 'all' || m.status === helpFilter;
+  });
+  if (!filtered.length) {
+    list.innerHTML = '<p class="empty">No ' +
+      (helpFilter === 'all' ? '' : escapeHtml(helpFilter) + ' ') +
+      'help messages.</p>';
     return;
   }
 
-  list.innerHTML = helpCache.map(function (m) {
+  list.innerHTML = filtered.map(function (m) {
     const user = profilesById[m.user_id] || {};
     const who = user.email || user.display_name || m.user_id;
     const badgeClass = m.status === 'replied' ? 'badge-replied' : 'badge-open';
@@ -850,14 +937,16 @@ function renderHelp() {
       ? '<div class="existing-reply"><b>Your reply:</b> ' + escapeHtml(m.reply) + '</div>'
       : '';
 
-    const replyBoxHtml = m.status === 'open'
-      ? '<div class="reply-box">' +
-          '<textarea data-reply-for="' + escapeHtml(m.id) + '" placeholder="Write your reply…" aria-label="Reply text"></textarea>' +
-          '<div class="actions">' +
-            '<button type="button" class="btn-small btn-gold" data-action="reply-help" data-id="' + escapeHtml(m.id) + '">Reply</button>' +
-          '</div>' +
-        '</div>'
-      : '';
+    // Reply box is always shown (prefilled with the existing reply), so the
+    // admin can answer an open message or follow up on a replied one.
+    const replyBoxHtml = '<div class="reply-box">' +
+      '<textarea data-reply-for="' + escapeHtml(m.id) + '" placeholder="Write your reply…" aria-label="Reply text">' +
+      escapeHtml(m.reply || '') + '</textarea>' +
+      '<div class="actions">' +
+        '<button type="button" class="btn-small btn-gold" data-action="reply-help" data-id="' + escapeHtml(m.id) + '">' +
+        (m.status === 'replied' ? 'Update reply' : 'Reply') + '</button>' +
+      '</div>' +
+    '</div>';
 
     return '<article class="help-item">' +
       '<div class="head"><b>' + escapeHtml(m.subject || '(no subject)') + '</b>' +
@@ -892,6 +981,8 @@ async function handleHelpReply(messageId, button) {
     await loadHelp();
     setStatus('helpStatus', 'Reply sent.', true);
     toast('Reply sent.');
+    // Keep the dashboard analytics + open-count badge accurate.
+    loadDashboard().catch(handleLoadError);
   } catch (err) {
     console.error(err);
     setStatus('helpStatus', err.message || 'Failed to reload help messages.', false);
@@ -928,11 +1019,8 @@ async function loadSettings() {
     : [];
   renderModelToggles(disabled);
 
-  // APK URL
-  el('setApkUrl').value = (settings.apk_url && settings.apk_url.url) || '';
-
   // Payment accounts (defaults match the seeded values; the inputs in
-  // admin.html already carry them, so only overwrite when a row exists).
+  // adminpanal.html already carry them, so only overwrite when a row exists).
   if (settings.payment_accounts) {
     const pa = settings.payment_accounts;
     if (pa.easypaisa) el('setEasypaisa').value = pa.easypaisa;
@@ -1092,17 +1180,6 @@ async function saveModels() {
   }
 }
 
-async function saveApk() {
-  try {
-    const url = el('setApkUrl').value.trim();
-    await upsertSetting('apk_url', { url: url });
-    setStatus('apkStatus', 'APK URL saved.', true);
-    toast('APK URL saved.');
-  } catch (err) {
-    setStatus('apkStatus', err.message, false);
-  }
-}
-
 async function savePayments() {
   try {
     const value = {
@@ -1207,7 +1284,16 @@ function wireEvents() {
       .catch(handleLoadError);
   });
 
-  // Help: delegated reply buttons
+  // Help: filters + delegated reply buttons
+  el('helpFilters').addEventListener('click', function (event) {
+    const button = event.target.closest('button[data-filter]');
+    if (!button) return;
+    helpFilter = button.dataset.filter;
+    document.querySelectorAll('#helpFilters button').forEach(function (b) {
+      b.classList.toggle('active', b === button);
+    });
+    renderHelp();
+  });
   el('helpList').addEventListener('click', function (event) {
     const button = event.target.closest('button[data-action="reply-help"]');
     if (!button) return;
@@ -1217,7 +1303,6 @@ function wireEvents() {
   // Settings save buttons
   el('saveMaintenanceBtn').addEventListener('click', saveMaintenance);
   el('saveModelsBtn').addEventListener('click', saveModels);
-  el('saveApkBtn').addEventListener('click', saveApk);
   el('savePaymentsBtn').addEventListener('click', savePayments);
   el('saveCustomPlanBtn').addEventListener('click', saveCustomPlan);
   el('saveSupportBtn').addEventListener('click', saveSupport);

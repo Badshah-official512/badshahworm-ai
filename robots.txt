@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /adminpanal
+Disallow: /admin.html
 Disallow: /api/
 
-Sitemap: https://badshah222.pages.dev/sitemap.xml
+Sitemap: https://badshah222-wormai.pages.dev/sitemap.xml

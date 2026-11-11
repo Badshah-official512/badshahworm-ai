@@ -25,13 +25,17 @@ const FREE_SAFETY_PREFIX =
 // Free FT chat models — none right now (no FT key allows fusion-spark).
 const FREE_CHAT_MODELS = new Set<string>([]);
 // Groq free chat — served by Groq's OpenAI-compatible API, not FT Fusion.
-// App id "groq-gpt-oss-120b" maps to Groq model "openai/gpt-oss-120b",
-// falling back to "openai/gpt-oss-20b" when the first fails.
-const GROQ_CHAT_MODELS = new Set(["groq-gpt-oss-120b"]);
+// Each app id maps to its own Groq model chain: the model itself first,
+// then the shared gpt-oss-20b fallback.
+const GROQ_CHAT_MODELS = new Set(["groq-gpt-oss-120b", "groq-qwen", "groq-allam"]);
+const GROQ_MODEL_CHAINS: Record<string, string[]> = {
+  "groq-gpt-oss-120b": ["openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+  "groq-qwen": ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"],
+  "groq-allam": ["allam-2-7b", "openai/gpt-oss-20b"],
+};
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 // Free GET chat providers (no key needed) — plain GET endpoints.
 const GET_CHAT_MODELS = new Set(["gpt-3-5", "pollinations-text"]);
-const GROQ_MODEL_CHAIN = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 // Free FT image models — none right now (no FT key allows fusion-uni).
 const FREE_IMAGE_MODELS = new Set<string>([]);
 // Free image generators (no key needed). Pollinations first, stable-diffusion fallback.
@@ -186,6 +190,26 @@ function b64encode(bytes: Uint8Array): string {
   }
   return btoa(binary);
 }
+
+// fetch with a hard timeout (the tool providers had none before).
+async function fetchWithTimeout(
+  url: string,
+  ms: number,
+  init: RequestInit = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// Clear, user-facing error strings — the UI shows these verbatim, so the
+// user can tell "needs Pro" apart from "service down" and "rate limited".
+const ERR_DOWN = "The AI service is down right now — please try again in a moment.";
+const ERR_RATE_LIMITED = "Rate limited — please wait a moment and try again.";
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // CORS preflight.
@@ -359,8 +383,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const city = typeof b.city === "string" && b.city.trim()
         ? b.city.trim().slice(0, 100)
         : "Swabi";
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${key}&units=metric&lang=en`,
+        30_000,
       );
       const d = await res.json().catch(() => null) as
         | Record<string, unknown>
@@ -390,7 +415,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const action = typeof b.action === "string" ? b.action : "";
       const MAILTM = "https://api.mail.tm";
       if (action === "new") {
-        const doms = await fetch(`${MAILTM}/domains`).then((r) => r.json())
+        const doms = await fetchWithTimeout(`${MAILTM}/domains`, 30_000).then((r) => r.json())
           .catch(() => null) as
           | { "hydra:member"?: Array<{ domain?: string }> }
           | null;
@@ -402,7 +427,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           Date.now().toString(36).slice(-4);
         const address = `${rand}@${domain}`;
         const password = Math.random().toString(36).slice(2, 14) + "A1!";
-        const acc = await fetch(`${MAILTM}/accounts`, {
+        const acc = await fetchWithTimeout(`${MAILTM}/accounts`, 30_000, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address, password }),
@@ -410,7 +435,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         if (!acc.ok) {
           return jsonResponse({ ok: false, error: "Temp mail unavailable" }, 502);
         }
-        const tok = await fetch(`${MAILTM}/token`, {
+        const tok = await fetchWithTimeout(`${MAILTM}/token`, 30_000, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address, password }),
@@ -433,7 +458,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return jsonResponse({ ok: false, error: "No temp mail session" }, 400);
       }
       if (action === "check") {
-        const res = await fetch(`${MAILTM}/messages`, {
+        const res = await fetchWithTimeout(`${MAILTM}/messages`, 30_000, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const d = await res.json().catch(() => null) as
@@ -454,8 +479,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         if (!id) {
           return jsonResponse({ ok: false, error: "No message id" }, 400);
         }
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `${MAILTM}/messages/${encodeURIComponent(id)}`,
+          30_000,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const m = await res.json().catch(() => null) as
@@ -477,8 +503,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (tool === "fbdl") {
       const url = typeof b.url === "string" ? b.url.trim() : "";
       if (!url) return jsonResponse({ ok: false, error: "No URL" }, 400);
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(url)}`,
+        30_000,
       );
       const d = await res.json().catch(() => null) as
         | {
@@ -566,69 +593,104 @@ Deno.serve(async (req: Request): Promise<Response> => {
     ? q
     : FREE_SAFETY_PREFIX + q;
 
-  // --- Groq free chat (OpenAI-compatible API, gpt-oss-120b then 20b). ---
+  // --- Groq free chat (OpenAI-compatible API, per-model chain + 5xx retry). ---
   if (isGroqChat) {
     const groqKey = Deno.env.get("GROQ_API_KEY");
     if (!groqKey) {
       console.error("ai-chat: GROQ_API_KEY is not set");
       return jsonResponse({ ok: false, error: "Server misconfigured" }, 500);
     }
-    let lastError = "AI service unavailable";
-    for (const groqModel of GROQ_MODEL_CHAIN) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60_000);
-      try {
-        const res = await fetch(GROQ_API_URL, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${groqKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: groqModel,
-            messages: [{ role: "user", content: upstreamPrompt }],
-            temperature: 0.7,
-            max_tokens: 2048,
-          }),
-          signal: controller.signal,
-        });
-        const data = await res.json().catch(() => null) as Record<
-          string,
-          unknown
-        > | null;
-        const choice = data && Array.isArray(data.choices) ? data.choices[0] : null;
-        const msg = choice && typeof choice === "object"
-          ? (choice as Record<string, unknown>).message
-          : null;
-        const text = msg && typeof msg === "object" &&
-            typeof (msg as Record<string, unknown>).content === "string"
-          ? ((msg as Record<string, unknown>).content as string).trim()
-          : "";
-        if (res.ok && text) {
+    const chain = GROQ_MODEL_CHAINS[modelName] ??
+      GROQ_MODEL_CHAINS["groq-gpt-oss-120b"];
+    let sawRateLimit = false;
+    let sawServerError = false;
+    outer:
+    for (const groqModel of chain) {
+      // One retry on a 5xx response or a network/timeout failure before
+      // moving to the next model in the chain.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60_000);
+        try {
+          const res = await fetch(GROQ_API_URL, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${groqKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: groqModel,
+              messages: [{ role: "user", content: upstreamPrompt }],
+              temperature: 0.7,
+              max_tokens: 2048,
+            }),
+            signal: controller.signal,
+          });
+          const data = await res.json().catch(() => null) as Record<
+            string,
+            unknown
+          > | null;
+          const choice = data && Array.isArray(data.choices) ? data.choices[0] : null;
+          const msg = choice && typeof choice === "object"
+            ? (choice as Record<string, unknown>).message
+            : null;
+          const text = msg && typeof msg === "object" &&
+              typeof (msg as Record<string, unknown>).content === "string"
+            ? ((msg as Record<string, unknown>).content as string).trim()
+            : "";
+          if (res.ok && text) {
+            console.log(
+              `ai-chat: user=${user.id} model=${modelName} ok=groq:${groqModel}`,
+            );
+            return jsonResponse({ ok: true, kind: "text", text });
+          }
+          if (res.status === 429) {
+            // Retrying a rate limit will not help — stop the whole chain.
+            sawRateLimit = true;
+            console.log(
+              `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} rate-limited`,
+            );
+            break outer;
+          }
+          if (res.status >= 500) {
+            sawServerError = true;
+            if (attempt === 0) {
+              console.log(
+                `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} 5xx, retrying once`,
+              );
+              continue;
+            }
+            console.log(
+              `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} 5xx twice, trying next`,
+            );
+            break;
+          }
+          // Any other 4xx (bad model, bad request) — try the next model.
           console.log(
-            `ai-chat: user=${user.id} model=${modelName} ok=groq:${groqModel}`,
+            `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} failed (${res.status}), trying next`,
           );
-          return jsonResponse({ ok: true, kind: "text", text });
+          break;
+        } catch (err) {
+          sawServerError = true;
+          if (attempt === 0) {
+            console.log(
+              `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} fetch failed, retrying once`,
+            );
+            continue;
+          }
+          console.log(
+            `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} fetch failed twice`,
+          );
+          break;
+        } finally {
+          clearTimeout(timeoutId);
         }
-        const errObj = data && typeof data.error === "object" && data.error !== null
-          ? data.error as Record<string, unknown>
-          : null;
-        lastError = errObj && typeof errObj.message === "string"
-          ? errObj.message as string
-          : `Groq ${groqModel} failed`;
-        console.log(
-          `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} failed, trying next`,
-        );
-      } catch (err) {
-        lastError = err instanceof Error ? err.name : "AI service unavailable";
-        console.log(
-          `ai-chat: user=${user.id} model=${modelName} groq:${groqModel} fetch failed`,
-        );
-      } finally {
-        clearTimeout(timeoutId);
       }
     }
-    return jsonResponse({ ok: false, error: lastError }, 502);
+    if (sawRateLimit) {
+      return jsonResponse({ ok: false, error: ERR_RATE_LIMITED }, 429);
+    }
+    return jsonResponse({ ok: false, error: ERR_DOWN }, 502);
   }
 
   // --- Free GET chat providers (gpt-3-5 JSON reply, Pollinations raw text). ---
@@ -657,10 +719,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         console.log(`ai-chat: user=${user.id} model=${modelName} ok=get`);
         return jsonResponse({ ok: true, kind: "text", text });
       }
-      return jsonResponse({ ok: false, error: "AI service unavailable" }, 502);
+      return jsonResponse({ ok: false, error: ERR_DOWN }, 502);
     } catch (err) {
       console.log(`ai-chat: user=${user.id} model=${modelName} get failed`);
-      return jsonResponse({ ok: false, error: "AI service unavailable" }, 502);
+      return jsonResponse({ ok: false, error: ERR_DOWN }, 502);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -738,7 +800,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       `ai-chat: user=${user.id} model=${modelName} upstream fetch failed`,
       err instanceof Error ? err.name : "unknown error",
     );
-    return jsonResponse({ ok: false, error: "AI service unavailable" }, 502);
+    return jsonResponse({ ok: false, error: ERR_DOWN }, 502);
   } finally {
     clearTimeout(timeoutId);
   }

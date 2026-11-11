@@ -4,8 +4,7 @@
 
 **BADSHAH AI** is a ChatGPT-style AI web app — chat with powerful AI models and generate images, free and Pro, in English and Urdu. Built for everyone: students, creators, freelancers and businesses in Pakistan and around the world.
 
-> **Live app:** coming soon on Cloudflare Pages
-> **Android APK:** [Badshah222-ai.apk](Badshah222-ai.apk)
+> **Live app:** https://badshah222-wormai.pages.dev
 
 ---
 
@@ -30,8 +29,8 @@ Most AI apps are expensive, English-only, or need a credit card. BADSHAH AI was 
 
 - **Frontend:** a fast single-page app in plain HTML, CSS and JavaScript (no heavy framework) — sidebar chats, chat + image modes, prompt library, voice read-aloud, file upload.
 - **Backend:** [Supabase](https://supabase.com) — PostgreSQL database with Row Level Security, email + password login (no OTP), and an Edge Function (Deno) that talks to the AI API.
-- **AI models:** FT Fusion API — 12 models (see below). The API key lives only as a server secret; it is never in the frontend code.
-- **Admin panel:** a professional dashboard (`admin.html`) — users, Pro grants, payment orders, help-center replies, plans, safety filter and site settings.
+- **AI models:** FT Fusion API + Groq + free providers — 15 models (see below). API keys live only as server secrets; they are never in the frontend code.
+- **Admin panel:** a professional dashboard (`adminpanal.html`, not linked from the main app) — users, Pro grants, payment orders, help-center replies, live analytics, plans, safety filter and site settings.
 - **Hosting:** Cloudflare Pages (deployment guide: [DEPLOY.md](DEPLOY.md)).
 
 ## AI models
@@ -40,7 +39,7 @@ Most AI apps are expensive, English-only, or need a credit card. BADSHAH AI was 
 
 | Mode | Models |
 | --- | --- |
-| Chat | groq-gpt-oss-120b (Groq GPT-OSS 120B), gpt-3-5, pollinations-text |
+| Chat | groq-gpt-oss-120b (Groq GPT-OSS 120B), groq-qwen (Groq Qwen 3 27B), groq-allam (Groq Allam 2 7B), gpt-3-5, pollinations-text |
 | Image | pollinations-image, stable-diffusion |
 
 **Pro:**
@@ -69,14 +68,13 @@ Free plan has a safety filter on. Pro has no extra filter. Pro access is checked
 
 ```text
 index.html / app.js / styles.css   – the app (chat, image, library, voice)
-admin.html / admin.js              – admin panel
+adminpanal.html / admin.js          – admin panel (at /adminpanal, no link on the main page)
 supabase/schema.sql                – database: profiles, plans, subscriptions,
                                      payment_orders, help_messages, admin_settings,
                                      login_history (+ RLS + RPCs)
 supabase/functions/ai-chat/        – Edge Function: auth, free/Pro gating, safety filter
 policies/                          – Privacy Policy, Payment Privacy Policy, Terms
 assets/                            – app images
-Badshah222-ai.apk                  – Android app
 ```
 
 ## Setup (developers)

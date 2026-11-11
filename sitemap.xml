@@ -1,10 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
-    <loc>https://badshah222.pages.dev/</loc>
-    <lastmod>2026-10-09</lastmod>
+    <loc>https://badshah222-wormai.pages.dev/</loc>
+    <lastmod>2026-11-11</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
-    <image:image><image:loc>https://badshah222.pages.dev/og-image.png</image:loc><image:title>BADSHAH AI - Badshah222 AI</image:title></image:image>
+    <image:image><image:loc>https://badshah222-wormai.pages.dev/og-image.png</image:loc><image:title>Badshah222 official worm ai</image:title></image:image>
+  </url>
+  <url>
+    <loc>https://badshah222-wormai.pages.dev/policies/privacy-policy.html</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://badshah222-wormai.pages.dev/policies/payment-privacy-policy.html</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://badshah222-wormai.pages.dev/policies/terms-conditions.html</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
   </url>
 </urlset>
