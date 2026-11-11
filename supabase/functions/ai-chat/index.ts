@@ -32,7 +32,10 @@ const GROQ_CHAT_MODELS = new Set(["groq-gpt-oss-120b"]);
 const GET_CHAT_MODELS = new Set(["gpt-3-5", "pollinations-text"]);
 const GROQ_MODEL_CHAIN = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const FREE_IMAGE_MODELS = new Set(["fusion-uni"]);
+// Free FT image models — none right now (no FT key allows fusion-uni).
+const FREE_IMAGE_MODELS = new Set<string>([]);
+// Free image generators (no key needed). Pollinations first, stable-diffusion fallback.
+const IMAGE_GEN_MODELS = new Set(["pollinations-image", "stable-diffusion"]);
 const PRO_CHAT_MODELS = new Set([
   "fusion-synth",
   "fusion-vortex",
@@ -343,6 +346,169 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ ok: true, kind: "audio", voice: voiceLabel, parts });
   }
 
+  // --- Tools (weather / temp mail / FB downloader). Free for every registered user. ---
+  if ((body as Record<string, unknown>).mode === "tool") {
+    const b = body as Record<string, unknown>;
+    const tool = typeof b.tool === "string" ? b.tool : "";
+    if (tool === "weather") {
+      const key = Deno.env.get("OPENWEATHER_API_KEY");
+      if (!key) {
+        console.error("ai-chat: OPENWEATHER_API_KEY is not set");
+        return jsonResponse({ ok: false, error: "Server misconfigured" }, 500);
+      }
+      const city = typeof b.city === "string" && b.city.trim()
+        ? b.city.trim().slice(0, 100)
+        : "Swabi";
+      const res = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${key}&units=metric&lang=en`,
+      );
+      const d = await res.json().catch(() => null) as
+        | Record<string, unknown>
+        | null;
+      if (!res.ok || !d || typeof d.main !== "object") {
+        return jsonResponse({ ok: false, error: "City not found" }, 502);
+      }
+      const main = d.main as Record<string, unknown>;
+      const w = Array.isArray(d.weather) && d.weather[0]
+        ? d.weather[0] as Record<string, unknown>
+        : {};
+      const wind = (d.wind ?? {}) as Record<string, unknown>;
+      const sys = (d.sys ?? {}) as Record<string, unknown>;
+      return jsonResponse({
+        ok: true,
+        tool: "weather",
+        city: d.name,
+        country: sys.country,
+        temp: main.temp,
+        feels_like: main.feels_like,
+        description: w.description,
+        humidity: main.humidity,
+        wind: wind.speed,
+      });
+    }
+    if (tool === "tempmail") {
+      const action = typeof b.action === "string" ? b.action : "";
+      const MAILTM = "https://api.mail.tm";
+      if (action === "new") {
+        const doms = await fetch(`${MAILTM}/domains`).then((r) => r.json())
+          .catch(() => null) as
+          | { "hydra:member"?: Array<{ domain?: string }> }
+          | null;
+        const domain = doms?.["hydra:member"]?.[0]?.domain;
+        if (!domain) {
+          return jsonResponse({ ok: false, error: "Temp mail unavailable" }, 502);
+        }
+        const rand = Math.random().toString(36).slice(2, 10) +
+          Date.now().toString(36).slice(-4);
+        const address = `${rand}@${domain}`;
+        const password = Math.random().toString(36).slice(2, 14) + "A1!";
+        const acc = await fetch(`${MAILTM}/accounts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, password }),
+        });
+        if (!acc.ok) {
+          return jsonResponse({ ok: false, error: "Temp mail unavailable" }, 502);
+        }
+        const tok = await fetch(`${MAILTM}/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, password }),
+        });
+        const tokJson = await tok.json().catch(() => null) as
+          | { token?: string }
+          | null;
+        if (!tok.ok || !tokJson?.token) {
+          return jsonResponse({ ok: false, error: "Temp mail unavailable" }, 502);
+        }
+        return jsonResponse({
+          ok: true,
+          tool: "tempmail",
+          address,
+          token: tokJson.token,
+        });
+      }
+      const token = typeof b.token === "string" ? b.token : "";
+      if (!token) {
+        return jsonResponse({ ok: false, error: "No temp mail session" }, 400);
+      }
+      if (action === "check") {
+        const res = await fetch(`${MAILTM}/messages`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await res.json().catch(() => null) as
+          | { "hydra:member"?: Array<Record<string, unknown>> }
+          | null;
+        const list = (d?.["hydra:member"] ?? []).map((m) => ({
+          id: m.id,
+          from: ((m.from as Record<string, unknown>)?.address ??
+            (m.from as Record<string, unknown>)?.name ?? "") as string,
+          subject: m.subject,
+          intro: m.intro,
+          createdAt: m.createdAt,
+        }));
+        return jsonResponse({ ok: true, tool: "tempmail", messages: list });
+      }
+      if (action === "read") {
+        const id = typeof b.id === "string" ? b.id : "";
+        if (!id) {
+          return jsonResponse({ ok: false, error: "No message id" }, 400);
+        }
+        const res = await fetch(
+          `${MAILTM}/messages/${encodeURIComponent(id)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const m = await res.json().catch(() => null) as
+          | Record<string, unknown>
+          | null;
+        if (!res.ok || !m) {
+          return jsonResponse({ ok: false, error: "Message not found" }, 502);
+        }
+        return jsonResponse({
+          ok: true,
+          tool: "tempmail",
+          subject: m.subject,
+          from: ((m.from as Record<string, unknown>)?.address ?? "") as string,
+          text: typeof m.text === "string" ? m.text : "",
+        });
+      }
+      return jsonResponse({ ok: false, error: "Unknown temp mail action" }, 400);
+    }
+    if (tool === "fbdl") {
+      const url = typeof b.url === "string" ? b.url.trim() : "";
+      if (!url) return jsonResponse({ ok: false, error: "No URL" }, 400);
+      const res = await fetch(
+        `https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(url)}`,
+      );
+      const d = await res.json().catch(() => null) as
+        | {
+          status?: boolean;
+          data?: {
+            title?: string;
+            duration?: string;
+            thumbnail?: string;
+            downloads?: Array<{ quality?: string; url?: string }>;
+          };
+        }
+        | null;
+      if (!res.ok || !d?.status || !d.data) {
+        return jsonResponse({ ok: false, error: "Could not fetch this video" }, 502);
+      }
+      return jsonResponse({
+        ok: true,
+        tool: "fbdl",
+        title: d.data.title,
+        duration: d.data.duration,
+        thumbnail: d.data.thumbnail,
+        downloads: (d.data.downloads ?? []).map((x) => ({
+          quality: x.quality,
+          url: x.url,
+        })),
+      });
+    }
+    return jsonResponse({ ok: false, error: "Unknown tool" }, 400);
+  }
+
   const { model, q } = body as Record<string, unknown>;
 
   if (typeof model !== "string" || !model.trim()) {
@@ -372,7 +538,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const isGroqChat = GROQ_CHAT_MODELS.has(modelName);
   const isGetChat = GET_CHAT_MODELS.has(modelName);
   const isFreeChat = FREE_CHAT_MODELS.has(modelName) || isGroqChat || isGetChat;
-  const isFreeImage = FREE_IMAGE_MODELS.has(modelName);
+  const isImageGen = IMAGE_GEN_MODELS.has(modelName);
+  const isFreeImage = FREE_IMAGE_MODELS.has(modelName) || isImageGen;
   const isProChat = PRO_CHAT_MODELS.has(modelName);
   const isProImage = PRO_IMAGE_MODELS.has(modelName);
 
@@ -497,6 +664,50 @@ Deno.serve(async (req: Request): Promise<Response> => {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  // --- Free image generators (Pollinations / stable-diffusion). ---
+  if (isImageGen) {
+    const imageUrls = (prompt: string): string[] => {
+      const enc = encodeURIComponent(prompt);
+      const poll =
+        `https://image.pollinations.ai/prompt/${enc}?width=1024&height=1024&nologo=true&model=flux`;
+      const sd =
+        `https://stable-diffusion.fak-official.workers.dev/text-to-image?prompt=${enc}`;
+      return modelName === "stable-diffusion" ? [sd, poll] : [poll, sd];
+    };
+    for (const url of imageUrls(upstreamPrompt)) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90_000);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        const ct = res.headers.get("content-type") ?? "";
+        if (res.ok && ct.startsWith("image/")) {
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          if (bytes.length > 1000) {
+            console.log(
+              `ai-chat: user=${user.id} model=${modelName} ok=image-gen`,
+            );
+            return jsonResponse({
+              ok: true,
+              kind: "image",
+              image_base64: encodeBase64(bytes),
+              content_type: ct.split(";")[0].trim(),
+            });
+          }
+        }
+        console.log(
+          `ai-chat: user=${user.id} model=${modelName} image-gen failed, trying next`,
+        );
+      } catch {
+        console.log(
+          `ai-chat: user=${user.id} model=${modelName} image-gen fetch failed`,
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    return jsonResponse({ ok: false, error: "No image returned" }, 502);
   }
 
   // --- FT Fusion (all other models). ---

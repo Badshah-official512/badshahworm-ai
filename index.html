@@ -143,6 +143,7 @@
           <span class="mini-slider-icon"><span class="bar bar1"></span><span class="bar bar2"></span></span> Settings
         </button>
         <button class="footer-link-btn" id="openBookmarksBtn"><i class="fa-solid fa-bookmark"></i> Bookmarks</button>
+        <button class="footer-link-btn" id="openToolsBtn"><i class="fa-solid fa-screwdriver-wrench"></i> Tools</button>
       </div>
       <button class="footer-link-btn footer-link-btn-wide" id="openAboutBtn"><i class="fa-solid fa-circle-info"></i> About</button>
       <div id="accountUsernameDisplay" class="account-name"></div>
@@ -320,6 +321,42 @@
           <input type="file" id="importDataInput" accept="application/json" hidden>
         </div>
         <button class="drawer-btn danger" id="clearDataBtn"><i class="fa-solid fa-trash"></i> Reset All Chats</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="toolsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <strong><i class="fa-solid fa-screwdriver-wrench"></i> Tools</strong>
+      <button class="icon-btn ghost close-modal" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-row">
+        <label><i class="fa-solid fa-cloud-sun"></i> Weather</label>
+        <div class="memory-input-row">
+          <input type="text" id="weatherCityInput" placeholder="City (e.g. Swabi)...">
+          <button class="drawer-btn" id="weatherBtn"><i class="fa-solid fa-magnifying-glass"></i> Check</button>
+        </div>
+        <div id="weatherResult" class="tool-result"></div>
+      </div>
+      <div class="settings-row">
+        <label><i class="fa-solid fa-envelope"></i> Temp Mail</label>
+        <div class="settings-btn-row">
+          <button class="drawer-btn" id="tempMailNewBtn"><i class="fa-solid fa-plus"></i> New address</button>
+          <button class="drawer-btn" id="tempMailCheckBtn"><i class="fa-solid fa-inbox"></i> Check inbox</button>
+        </div>
+        <div id="tempMailAddr" class="tool-result"></div>
+        <div id="tempMailList" class="tool-result"></div>
+      </div>
+      <div class="settings-row">
+        <label><i class="fa-brands fa-facebook"></i> Facebook Video Downloader</label>
+        <div class="memory-input-row">
+          <input type="text" id="fbdlUrlInput" placeholder="Paste Facebook video link...">
+          <button class="drawer-btn" id="fbdlBtn"><i class="fa-solid fa-download"></i> Get links</button>
+        </div>
+        <div id="fbdlResult" class="tool-result"></div>
       </div>
     </div>
   </div>

@@ -65,7 +65,8 @@ const MODELS = {
     'fusion-void':   { label: 'Void',   icon: 'fa-circle-notch', pro: true },
   },
   image: {
-    'fusion-uni':   { label: 'Uni',   icon: 'fa-image', pro: false },
+    'pollinations-image': { label: 'Pollinations', icon: 'fa-image', pro: false },
+    'stable-diffusion': { label: 'Stable Diffusion', icon: 'fa-wand-magic-sparkles', pro: false },
     'fusion-astra': { label: 'Astra', icon: 'fa-star', pro: true },
   },
 };
@@ -82,7 +83,8 @@ const MODEL_COSTS = {
   'fusion-reaper': { inputPerWord: 3, outputPerWord: 6 },
   'fusion-dread':  { inputPerWord: 3, outputPerWord: 6 },
   'fusion-void':   { inputPerWord: 3, outputPerWord: 6 },
-  'fusion-uni':    { flatCost: 22000 },
+  'pollinations-image': { flatCost: 22000 },
+  'stable-diffusion': { flatCost: 22000 },
   'fusion-astra':  { flatCost: 40000 },
 };
 
@@ -294,7 +296,7 @@ const state = {
   chats: [],
   activeChatId: null,
   mode: 'chat',
-  settings: { theme: 'noir', fontSize: 1, ttsVoice: 'auto', models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true },
+  settings: { theme: 'noir', fontSize: 1, ttsVoice: 'auto', models: { chat: 'groq-gpt-oss-120b', image: 'pollinations-image' }, memories: [], memoryEnabled: true },
   usage: { tokensUsedLifetime: 0, alertsShown: {} },
   editingMessageId: null,
   abortController: null,
@@ -380,7 +382,7 @@ function renderMarkdown(text) {
 async function loadSettings() {
   const saved = await idbGet('meta', 'settings');
   if (saved && saved.value) {
-    let migratedModels = { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' };
+    let migratedModels = { chat: 'groq-gpt-oss-120b', image: 'pollinations-image' };
     if (typeof saved.value.model === 'string') {
       migratedModels.chat = saved.value.model;
     } else if (saved.value.models) {
@@ -391,13 +393,13 @@ async function loadSettings() {
 
 
     if (!MODELS.chat[migratedModels.chat]) migratedModels.chat = 'groq-gpt-oss-120b';
-    if (!MODELS.image[migratedModels.image]) migratedModels.image = 'fusion-uni';
+    if (!MODELS.image[migratedModels.image]) migratedModels.image = 'pollinations-image';
     state.settings = { theme: 'noir', fontSize: 1, ttsVoice: 'auto', memories: [], memoryEnabled: true, ...saved.value, models: migratedModels };
     state.settings.theme = 'noir';
     delete state.settings.model;
     if (!state.settings.ttsVoice) state.settings.ttsVoice = 'auto';
   } else {
-    state.settings = { theme: 'noir', fontSize: 1, ttsVoice: 'auto', models: { chat: 'groq-gpt-oss-120b', image: 'fusion-uni' }, memories: [], memoryEnabled: true };
+    state.settings = { theme: 'noir', fontSize: 1, ttsVoice: 'auto', models: { chat: 'groq-gpt-oss-120b', image: 'pollinations-image' }, memories: [], memoryEnabled: true };
   }
   applyTheme();
   applyFontSize();
@@ -480,6 +482,79 @@ $('#fontSizeRange')?.addEventListener('input', (e) => {
 $('#ttsVoiceSelect')?.addEventListener('change', (e) => {
   state.settings.ttsVoice = e.target.value;
   saveSettings();
+});
+
+// ---- Tools (Weather / Temp Mail / FB Downloader) ----
+// All three run through the ai-chat function (mode "tool"), free for every
+// registered user. Temp-mail address + token live in localStorage only.
+async function callTool(body) {
+  const { data, error } = await supabaseClient.functions.invoke('ai-chat', { body });
+  if (error || !data || !data.ok) throw new Error((data && data.error) || 'Tool failed');
+  return data;
+}
+function showTempMailAddr() {
+  const box = $('#tempMailAddr');
+  if (!box) return;
+  let tm = null;
+  try { tm = JSON.parse(localStorage.getItem('bw_tempmail_v1') || 'null'); } catch (_) {}
+  if (tm && tm.address) {
+    box.innerHTML = `Address: <strong>${escapeHtml(tm.address)}</strong> <button class="drawer-btn" id="tempMailCopyBtn">Copy</button>`;
+    $('#tempMailCopyBtn')?.addEventListener('click', () => {
+      if (navigator.clipboard) navigator.clipboard.writeText(tm.address);
+      toast('Address copied', 'success');
+    });
+  } else box.textContent = '';
+}
+$('#openToolsBtn')?.addEventListener('click', () => { showTempMailAddr(); openModal('#toolsModal'); });
+$('#weatherBtn')?.addEventListener('click', async () => {
+  const city = ($('#weatherCityInput')?.value || 'Swabi').trim();
+  const box = $('#weatherResult');
+  if (box) box.textContent = 'Checking...';
+  try {
+    const d = await callTool({ mode: 'tool', tool: 'weather', city });
+    if (box) box.innerHTML = `<strong>${escapeHtml(String(d.city || city))}, ${escapeHtml(String(d.country || ''))}</strong> — ${escapeHtml(String(d.description || ''))}, ${d.temp}&deg;C (feels ${d.feels_like}&deg;C), humidity ${d.humidity}%, wind ${d.wind} m/s`;
+  } catch (e) { if (box) box.textContent = 'Weather unavailable. Try again.'; }
+});
+$('#tempMailNewBtn')?.addEventListener('click', async () => {
+  const box = $('#tempMailAddr');
+  if (box) box.textContent = 'Creating...';
+  try {
+    const d = await callTool({ mode: 'tool', tool: 'tempmail', action: 'new' });
+    localStorage.setItem('bw_tempmail_v1', JSON.stringify({ address: d.address, token: d.token }));
+    showTempMailAddr();
+    toast('Temp address created', 'success');
+  } catch (e) { if (box) box.textContent = 'Could not create an address. Try again.'; }
+});
+$('#tempMailCheckBtn')?.addEventListener('click', async () => {
+  let tm = null;
+  try { tm = JSON.parse(localStorage.getItem('bw_tempmail_v1') || 'null'); } catch (_) {}
+  const list = $('#tempMailList');
+  if (!tm || !tm.token) { if (list) list.textContent = 'Create an address first.'; return; }
+  if (list) list.textContent = 'Checking inbox...';
+  try {
+    const d = await callTool({ mode: 'tool', tool: 'tempmail', action: 'check', token: tm.token });
+    if (!d.messages || !d.messages.length) { if (list) list.textContent = 'Inbox is empty.'; return; }
+    if (list) {
+      list.innerHTML = d.messages.map(m => `<div class="tool-msg" data-id="${escapeHtml(String(m.id))}"><strong>${escapeHtml(String(m.subject || '(no subject)'))}</strong><br><span>${escapeHtml(String(m.from || ''))} — ${escapeHtml(String(m.intro || ''))}</span></div>`).join('');
+      list.querySelectorAll('.tool-msg').forEach(el => el.addEventListener('click', async () => {
+        try {
+          const r = await callTool({ mode: 'tool', tool: 'tempmail', action: 'read', token: tm.token, id: el.dataset.id });
+          el.innerHTML = `<strong>${escapeHtml(String(r.subject || ''))}</strong><br><span>${escapeHtml(String(r.from || ''))}</span><p>${escapeHtml(String(r.text || 'No text body.'))}</p>`;
+        } catch (e) { toast('Could not open this message.', 'error'); }
+      }));
+    }
+  } catch (e) { if (list) list.textContent = 'Inbox check failed. Try again.'; }
+});
+$('#fbdlBtn')?.addEventListener('click', async () => {
+  const url = ($('#fbdlUrlInput')?.value || '').trim();
+  const box = $('#fbdlResult');
+  if (!url) { if (box) box.textContent = 'Paste a Facebook video link first.'; return; }
+  if (box) box.textContent = 'Fetching links...';
+  try {
+    const d = await callTool({ mode: 'tool', tool: 'fbdl', url });
+    const links = (d.downloads || []).map(x => `<a href="${escapeHtml(String(x.url))}" target="_blank" rel="noopener">${escapeHtml(String(x.quality || 'Video'))}</a>`).join(' &bull; ');
+    if (box) box.innerHTML = `<strong>${escapeHtml(String(d.title || 'Facebook Video'))}</strong> (${escapeHtml(String(d.duration || ''))})<br>${links || 'No download links found.'}`;
+  } catch (e) { if (box) box.textContent = 'Could not fetch this video. Try another link.'; }
 });
 
 function renderMemories() {
@@ -1677,7 +1752,7 @@ async function runChatGeneration(chat, text) {
 }
 
 async function runImageGeneration(chat, text) {
-  const model = state.settings.models.image || 'fusion-uni';
+  const model = state.settings.models.image || 'pollinations-image';
   if (!aiPrecheck(model)) { setGenerating(false); return; }
   if (!checkAndConsumeTokens('image', 0, model)) { setGenerating(false); return; }
   setGenerating(true); showSkeleton();

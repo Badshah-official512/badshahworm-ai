@@ -768,3 +768,8 @@ body{display:flex;flex-direction:column}
 .help-thread:hover{border-color:var(--border-strong)}
 
 #ttsVoiceSelect { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: inherit; font: inherit; }
+
+.tool-result { margin-top: 10px; font-size: 0.92em; line-height: 1.5; word-break: break-word; }
+.tool-result:empty { display: none; }
+.tool-msg { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; cursor: pointer; }
+.tool-msg p { margin: 6px 0 0; white-space: pre-wrap; }

@@ -117,7 +117,8 @@ const MODELS = [
   { id: 'fusion-reaper', kind: 'chat' },
   { id: 'fusion-dread', kind: 'chat' },
   { id: 'fusion-void', kind: 'chat' },
-  { id: 'fusion-uni', kind: 'image' },
+  { id: 'pollinations-image', kind: 'image' },
+  { id: 'stable-diffusion', kind: 'image' },
   { id: 'fusion-astra', kind: 'image' }
 ];
 
